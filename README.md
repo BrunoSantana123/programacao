@@ -6,3 +6,4 @@ Projetos de estudo feitos do zero.
 - **bot.py**: bot de atendimento que responde dúvidas e identifica leads quentes.
 
 Para rodar: instale o Python e execute `python gastos.py` ou `python bot.py`.
+
