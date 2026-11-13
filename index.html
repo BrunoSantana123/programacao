@@ -711,6 +711,124 @@ async function syncNow(){
 
 showAccount();
 if(session)loadCloud();
+
+ 
+<style>
+body{background:radial-gradient(circle at 85% 0,#65401866,transparent 40%),#0d0d11;color:#f7f2e8}
+main{max-width:950px}
+h1{background:linear-gradient(110deg,#aa711e,#ffe79d,#fff5c9,#b87b25);background-clip:text;color:transparent;filter:drop-shadow(0 0 9px #d59b324b)}
+section{background:linear-gradient(140deg,#27242a,#16161b);border:1px solid #a780352d;box-shadow:0 10px 25px #0005;border-radius:17px}
+button{background:linear-gradient(115deg,#bd822a,#ffe39d 50%,#be8428);color:#1d150b;box-shadow:0 3px 14px #dca73b30}
+input,select{background:#111116;border-color:#785a32}
+nav button{min-width:90px}
+nav{padding:5px 0}
+.nexo-calendar{margin-bottom:15px}
+.nexo-calhead{display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:15px}
+.nexo-calhead strong{text-transform:capitalize;font-size:20px}
+.nexo-calendar-grid{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:5px}
+.nexo-calendar-grid>span{text-align:center;color:#aaa;font-size:11px}
+.nexo-day{min-width:0;min-height:70px;padding:7px;background:#26232a;color:#f7eddf;border:1px solid #615033;border-radius:9px;display:flex;flex-direction:column;justify-content:space-between;box-shadow:none}
+.nexo-day.selected{background:linear-gradient(130deg,#bc872f,#ffe69c);color:#271903}
+.nexo-day b{font-size:12px}
+.nexo-day em{font-style:normal;font-size:10px;color:#f2c75f}
+.nexo-day.selected em{color:#35200a}
+.nexo-event{padding:10px 0;border-bottom:1px solid #ffffff20}
+.nexo-event:last-child{border:0}
+.nexo-event time{color:#f5c766;font-weight:800}
+@media(max-width:600px){
+.nexo-day{min-height:51px;padding:5px}
+.nexo-day b{font-size:11px}
+.nexo-calhead strong{font-size:16px}
+.nexo-calhead button{padding:8px}
+}
+</style>
+<script>
+(()=>{
+ const originalRender=render;
+ let selected=new Date().toLocaleDateString('sv-SE',{timeZone:'America/Sao_Paulo'});
+ let month=selected.slice(0,7);
+
+ function calendar(){
+  const [year,m]=month.split('-').map(Number);
+  const first=new Date(year,m-1,1);
+  const last=new Date(year,m,0).getDate();
+  const title=first.toLocaleDateString('pt-BR',{month:'long',year:'numeric'});
+  const counts={};
+
+  for(const ev of data.events){
+   counts[ev.date]=(counts[ev.date]||0)+1;
+  }
+
+  const days=['Dom','Seg','Ter','Qua','Qui','Sex','Sáb']
+   .map(d=>`<span>${d}</span>`);
+
+  for(let i=0;i<first.getDay();i++){
+   days.push('<span></span>');
+  }
+
+  for(let day=1;day<=last;day++){
+   const date=month+'-'+String(day).padStart(2,'0');
+   days.push(`
+    <button type="button"
+     class="nexo-day ${selected===date?'selected':''}"
+     data-cdate="${date}">
+     <b>${day}</b>
+     <em>${counts[date]?counts[date]+' compromisso(s)':''}</em>
+    </button>`);
+  }
+
+  const events=data.events.filter(e=>e.date===selected)
+   .sort((a,b)=>(a.time||'').localeCompare(b.time||''));
+
+  const box=document.createElement('section');
+  box.className='nexo-calendar';
+  box.innerHTML=`
+   <div class="nexo-calhead">
+    <strong>${title}</strong>
+    <div>
+     <button type="button" data-cmove="-1">‹</button>
+     <button type="button" data-cmove="1">›</button>
+    </div>
+   </div>
+   <div class="nexo-calendar-grid">${days.join('')}</div>
+   <h3>Compromissos de ${selected.split('-').reverse().join('/')}</h3>
+   ${events.map(e=>`
+    <div class="nexo-event">
+     <time>${esc(e.time||'Sem horário')}</time>
+     — ${esc(e.name)}
+    </div>`).join('')||'<p class="muted">Nenhum compromisso nesse dia.</p>'}
+   <p class="muted">Para adicionar, use o formulário abaixo.</p>`;
+
+  el.prepend(box);
+
+  for(const b of box.querySelectorAll('[data-cdate]')){
+   b.onclick=()=>{
+    selected=b.dataset.cdate;
+    render();
+   };
+  }
+
+  for(const b of box.querySelectorAll('[data-cmove]')){
+   b.onclick=()=>{
+    const d=new Date(year,m-1+Number(b.dataset.cmove),1);
+    month=d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0');
+    selected=month+'-01';
+    render();
+   };
+  }
+
+  const field=el.querySelector('#event [name="date"]');
+  if(field)field.value=selected;
+ }
+
+ render=function(){
+  originalRender();
+  if(page==='Agenda')calendar();
+ };
+ render();
+})();
+</script>
+
 </script>
 </body>
 </html>
