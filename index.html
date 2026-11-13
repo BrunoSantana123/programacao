@@ -711,6 +711,9 @@ async function syncNow(){
 
 showAccount();
 if(session)loadCloud();
+</script>
+
+<style>
 
  
 <style>
@@ -821,14 +824,12 @@ nav{padding:5px 0}
   if(field)field.value=selected;
  }
 
- render=function(){
+render=function(){
   originalRender();
   if(page==='Agenda')calendar();
- };
- render();
+};
+render();
 })();
-</script>
-
 </script>
 </body>
 </html>
