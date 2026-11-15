@@ -129,6 +129,7 @@ As duas contas abaixo são contas NEXO/Supabase independentes, **não duas conta
 | Ensaio | Resultado local |
 | --- | --- |
 | Autorizar/negar, retorno previamente aprovado, state, PKCE errado/replay | Aprovado |
+| Renovação OAuth real, seguida de acesso MCP com o novo token | Aprovado |
 | Token ausente/alterado/expirado/issuer/audience/role/client errados | Recusados |
 | Receitas/despesas, centavos, categoria e data São Paulo | Aprovado |
 | UUID repetido e concorrência sem perda de histórico | Aprovado |
@@ -208,6 +209,8 @@ Os nomes das opções podem variar por plano e workspace.
 2. Na conta ChatGPT, verificar disponibilidade de Apps, permissões do workspace e
    instalações de desenvolvimento. Se faltar a opção, o administrador/gestor da conta
    deve verificar as regras e o plano; cadastrar OAuth não libera essa funcionalidade.
+   Se a criação não aparecer no celular, realizar a configuração inicial no navegador
+   do computador e depois verificar a disponibilidade do app no dispositivo móvel.
 3. Se o app NEXO estiver compartilhado/publicado e disponível para aquela conta,
    selecionar **Conectar**, usando o mesmo app registrado, não a sessão de outra pessoa.
 4. Se for ensaio de desenvolvimento e a conta permitir criar um app MCP, cadastrar

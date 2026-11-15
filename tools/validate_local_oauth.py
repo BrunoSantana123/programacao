@@ -315,6 +315,12 @@ def run(directory, client_id):
                                 if json.load(user_response).get('sub') != private['user_id']:
                                     raise RuntimeError('Identidade OAuth divergente.')
                             if decision == 'approve':
+                                if not token.get('refresh_token'):
+                                    raise RuntimeError('OAuth não retornou renovação para o cliente de testes.')
+                                token = api(origin, key, '/auth/v1/oauth/token', {
+                                    'grant_type':'refresh_token', 'client_id':client_id,
+                                    'refresh_token':token['refresh_token']})
+                                print('PASS: renovação OAuth real preserva acesso do cliente; token renovado será usado no MCP.')
                                 verify_mcp(private, token['access_token'], password_session['access_token'], directory)
                                 from tools.validate_financial_delivery import verify
                                 verify(browser, local_site, private, token['access_token'], client_id)
