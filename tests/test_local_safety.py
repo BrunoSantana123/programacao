@@ -56,6 +56,7 @@ class LocalSafetyTests(TestCase):
             function = directory / 'supabase/functions/nexo-mcp-test/index.ts'
             function.parent.mkdir(parents=True)
             function.write_bytes((ROOT / 'supabase/functions/nexo-mcp-test/index.ts').read_bytes())
+            (function.parent / 'finance.mjs').write_bytes((ROOT / 'supabase/functions/nexo-mcp-test/finance.mjs').read_bytes())
             (directory / 'local-functions.env').write_bytes(original + b'UNREVIEWED_SETTING=yes\n')
             with self.assertRaises(RuntimeError):
                 validate_environment(directory)
@@ -66,3 +67,14 @@ class LocalSafetyTests(TestCase):
                 api('https://tznebgdgdqpbhjdrhprb.supabase.co', 'dummy-test-key',
                     '/auth/v1/admin/users', {'email': 'test@example.invalid'})
             opener.assert_not_called()
+
+    def test_changed_financial_module_is_rejected(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            directory=Path(temporary)
+            (directory/'private.json').write_text(json.dumps({'api_url':'http://127.0.0.1:54321'}))
+            function=directory/'supabase/functions/nexo-mcp-test/index.ts'
+            function.parent.mkdir(parents=True)
+            function.write_bytes((ROOT/'supabase/functions/nexo-mcp-test/index.ts').read_bytes())
+            (function.parent/'finance.mjs').write_text('unreviewed module')
+            with self.assertRaisesRegex(RuntimeError,'Módulo financeiro'):
+                validate_environment(directory)

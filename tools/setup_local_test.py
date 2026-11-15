@@ -112,6 +112,7 @@ def setup(directory):
     function = directory / 'supabase/functions/nexo-mcp-test'
     function.mkdir(parents=True, exist_ok=True)
     shutil.copyfile(ROOT / 'supabase/functions/nexo-mcp-test/index.ts', function / 'index.ts')
+    shutil.copyfile(ROOT / 'supabase/functions/nexo-mcp-test/finance.mjs', function / 'finance.mjs')
     network_fingerprint = prepare_container_network(directory)
     if text != original:
         # Aplicar mudanças de OAuth/chaves também na segunda execução, sem reset.

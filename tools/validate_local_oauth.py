@@ -57,6 +57,9 @@ def validate_environment(directory):
     expected = ROOT / 'supabase/functions/nexo-mcp-test/index.ts'
     if copied.read_bytes() != expected.read_bytes():
         raise RuntimeError('Função local diverge da cópia de testes revisada; execute a preparação novamente.')
+    module = directory / 'supabase/functions/nexo-mcp-test/finance.mjs'
+    if not module.is_file() or module.read_bytes() != (ROOT / 'supabase/functions/nexo-mcp-test/finance.mjs').read_bytes():
+        raise RuntimeError('Módulo financeiro local divergente; prepare novamente.')
     network = (directory / 'local-functions.env').read_bytes()
     if (not network.startswith(b'NEXO_TEST_MODE=local\n')
             or hashlib.sha256(network).hexdigest() != private.get('network_env_sha256')):
@@ -131,7 +134,7 @@ def verify_mcp(private, token, password_token, directory):
     status, _, listing = request(url, dict(jsonrpc='2.0', id=2, method='tools/list'), auth)
     assert status == 200
     tools = listing['result']['tools']
-    assert [t['name'] for t in tools] == ['testar_conexao', 'registrar_lancamento']
+    assert [t['name'] for t in tools] == ['testar_conexao', 'registrar_lancamento', 'consultar_saldo', 'consultar_movimentacoes']
     assert tools[0]['annotations']['readOnlyHint'] is True
     status, _, result = request(url, dict(jsonrpc='2.0', id=3, method='tools/call',
                                         params={'name': 'testar_conexao', 'arguments': {}}), auth)
@@ -186,6 +189,9 @@ def run(directory, client_id):
             if path == '/oauth-config.js':
                 text = ('export const TRUSTED_CLIENT_ID=' + json.dumps(client_id) + ';\n'
                         'export const TRUSTED_CALLBACK=' + json.dumps(CALLBACK) + ';')
+                content_type = 'text/javascript'
+            elif path in ('/auth-client.js','/auth-config.js'):
+                text = (ROOT / path.lstrip('/')).read_text()
                 content_type = 'text/javascript'
             elif path == '/oauth-policy.js':
                 text = (ROOT / 'oauth-policy.js').read_text()

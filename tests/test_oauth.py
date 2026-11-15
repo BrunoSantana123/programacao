@@ -292,6 +292,27 @@ export function createClient(project, key, options) {
         }''', dict(callback=CALLBACK))
         self.assertTrue(all(results), results)
 
+    def test_second_registered_client_is_allowed(self):
+        second='11111111-1111-4111-8111-111111111111'
+        callback='https://chatgpt.com/connector/oauth/second-test'
+        self.details['client']['id']=second
+        self.details['redirect_uri']=callback
+        config='export const TRUSTED_CLIENTS='+json.dumps([{'clientId':CLIENT,'callback':CALLBACK},{'clientId':second,'callback':callback}])+';'
+        self.page.route('**/oauth-config.js',lambda r:r.fulfill(content_type='text/javascript',body=config))
+        self.open()
+        self.login()
+        expect(self.page.locator('#consent')).to_be_visible()
+
+    def test_second_client_cannot_use_first_callback(self):
+        second='11111111-1111-4111-8111-111111111111'
+        self.details['client']['id']=second
+        config='export const TRUSTED_CLIENTS='+json.dumps([{'clientId':CLIENT,'callback':CALLBACK},{'clientId':second,'callback':'https://chatgpt.com/connector/oauth/second-test'}])+';'
+        self.page.route('**/oauth-config.js',lambda r:r.fulfill(content_type='text/javascript',body=config))
+        self.open()
+        self.login()
+        expect(self.page.locator('#consent')).to_be_hidden()
+        expect(self.page.locator('#status')).to_contain_text('não autorizado')
+
 
 if __name__ == '__main__':
     unittest.main()

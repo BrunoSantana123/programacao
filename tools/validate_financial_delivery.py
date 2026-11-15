@@ -36,6 +36,11 @@ def verify(browser, site, private, oauth_token, client_id):
         assert status == 200 and 'result' in response
         return response['result']
 
+    def query(name,args=None,headers=mcp_headers):
+        status,_,response=request(origin+'/functions/v1/nexo-mcp-test',{'jsonrpc':'2.0','id':201,'method':'tools/call','params':{'name':name,'arguments':args or {}}},headers)
+        assert status==200 and 'result' in response
+        return response['result']
+
     def rows(headers, identifier):
         status, _, result = request(origin + '/rest/v1/nexo_data?select=user_id,data,updated_at&user_id=eq.' + identifier,
                                     headers=headers)
@@ -120,7 +125,7 @@ def verify(browser, site, private, oauth_token, client_id):
         contexts.append(mobile)
         mobile.route('**/*', route_local)
         second = mobile.new_page()
-        email, password = 'nexo-homolog-' + secrets.token_hex(8) + '@example.com', secrets.token_urlsafe(24)
+        email, password = 'nexo-homolog-' + secrets.token_hex(8) + '@example.com', secrets.token_urlsafe(24) + '!Aa1'
         second.goto(site + '/index.html')
         second.locator('#auth [name=email]').fill(email)
         second.locator('#auth [name=password]').fill(password)
@@ -143,7 +148,7 @@ def verify(browser, site, private, oauth_token, client_id):
         expect(second.locator('#view')).not_to_contain_text(income['descricao'])
 
         # O segundo usuário obtém seu próprio grant OAuth, jamais um token forjado.
-        verifier, state = secrets.token_urlsafe(48), secrets.token_urlsafe(24)
+        verifier, state = secrets.token_urlsafe(48), secrets.token_urlsafe(24) + '!Aa1'
         challenge = base64.urlsafe_b64encode(hashlib.sha256(verifier.encode()).digest()).rstrip(b'=').decode()
         params = dict(client_id=client_id, redirect_uri=CALLBACK, response_type='code', scope='openid',
                       state=state, code_challenge=challenge, code_challenge_method='S256')
@@ -174,6 +179,27 @@ def verify(browser, site, private, oauth_token, client_id):
         assert rows(owner_headers, owner)[0]['data'] == current['data']
         second.bring_to_front()
         expect(second.locator('.dataList')).to_contain_text(own['descricao'], timeout=22000)
+
+        # Consultas MCP devem usar a mesma conta OAuth, sem escrever no histórico.
+        primary_before=rows(owner_headers,owner)[0]
+        second_before=rows(other_headers,second_id)[0]
+        own_oauth={'Authorization':'Bearer '+second_oauth['access_token']}
+        b=query('consultar_saldo',headers=own_oauth)
+        assert not b.get('isError') and b['structuredContent']['saldo_centavos']==-3250
+        listing=query('consultar_movimentacoes',headers=own_oauth)['structuredContent']
+        assert listing['total']==1 and listing['movimentacoes'][0]['descricao']==own['descricao']
+        assert query('consultar_movimentacoes',{'user_id':owner},own_oauth).get('isError')
+        assert query('consultar_saldo',{'user_id':owner},own_oauth).get('isError')
+        assert query('consultar_movimentacoes',{'limite':51},own_oauth).get('isError')
+        assert query('consultar_saldo',{'data_inicio':'2026-02-30'},own_oauth).get('isError')
+        first=query('consultar_movimentacoes',{'categoria':'Homologação','limite':50})['structuredContent']
+        assert any(x['id']==income['id'] for x in first['movimentacoes'])
+        assert all(x['descricao']!=own['descricao'] for x in first['movimentacoes'])
+        expected=page.evaluate('Math.round(totals(data.entries).net*100)')
+        assert query('consultar_saldo')['structuredContent']['saldo_centavos']==expected
+        assert rows(owner_headers,owner)[0]==primary_before
+        assert rows(other_headers,second_id)[0]==second_before
+        print('PASS: saldo/movimentações MCP de duas contas OAuth isoladas, sem gravar dados; saldo compatível com o NEXO.')
 
         # RLS também precisa impedir gravação direta na conta de outra pessoa.
         for method in ['PATCH', 'DELETE']:

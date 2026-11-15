@@ -1,3 +1,5 @@
+> Relatório anterior. Para o estado atual (consultas, cadastro oficial preservado, múltiplas contas e voz), veja [CHATGPT-INTEGRACAO.md](CHATGPT-INTEGRACAO.md).
+
 # NEXO — duas entregas para homologação
 
 ## Implementado nesta revisão
