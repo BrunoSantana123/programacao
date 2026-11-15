@@ -7,3 +7,7 @@ Projetos de estudo feitos do zero.
 
 Para rodar: instale o Python e execute `python gastos.py` ou `python bot.py`.
 
+
+## NEXO
+
+A versão de cadastro, conexão OAuth e receitas/despesas pelo ChatGPT está preparada para homologação isolada. Veja [HOMOLOGACAO.md](HOMOLOGACAO.md) para os passos e a pendência de endereço HTTPS, e [TESTING.md](TESTING.md) para executar os testes. Nada é publicado em produção automaticamente.

@@ -55,7 +55,7 @@ class LocalSafetyTests(TestCase):
                 'network_env_sha256': hashlib.sha256(original).hexdigest()}))
             function = directory / 'supabase/functions/nexo-mcp-test/index.ts'
             function.parent.mkdir(parents=True)
-            function.write_bytes((ROOT / 'tests/integration/nexo-mcp-test/index.ts').read_bytes())
+            function.write_bytes((ROOT / 'supabase/functions/nexo-mcp-test/index.ts').read_bytes())
             (directory / 'local-functions.env').write_bytes(original + b'UNREVIEWED_SETTING=yes\n')
             with self.assertRaises(RuntimeError):
                 validate_environment(directory)

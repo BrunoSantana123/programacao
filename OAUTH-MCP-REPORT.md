@@ -1,146 +1,64 @@
-# Relatório técnico — OAuth e ambiente isolado NEXO
+# NEXO — duas entregas para homologação
 
-## Resultado
+## Implementado nesta revisão
 
-O ambiente isolado foi preparado e validado no Codex. Supabase local em Docker,
-conta fictícia, OAuth real e a função MCP recuperada passaram nos ensaios.
-A preparação foi repetida sem recriar a conta nem resetar o banco.
+1. **Cadastro, login e conexão:** cadastro/login existentes reaproveitados;
+   conexão OAuth da própria conta; consentimento explícito para lançamentos;
+   testes em telas de celular e computador; proteção contra mistura de sessões.
+2. **Receitas e despesas:** a função MCP recuperada foi estendida com
+   `registrar_lancamento`. Os dados são acrescentados ao JSON existente em
+   `nexo_data`, no formato que o NEXO já apresenta. A tela busca alterações
+   feitas pelo ChatGPT sem recarregamento manual.
 
-O PR corrige o consentimento, que tinha Client ID e Redirect URI vazios, e suas
-pendências de carregamento, testes e automação. Não contém Client Secret,
-tokens, senhas, chaves privadas ou dados financeiros reais.
+Nenhum sistema financeiro paralelo, processador de voz ou novo armazenamento
+foi criado. `testar_conexao` permanece disponível.
 
-## Correções
+## Integridade financeira e privacidade
 
-- Configuração pública confirmada e conferência de cliente, conta, solicitação
-  e endereço de retorno antes de autorizar a conexão.
-- Importações dinâmicas com tratamento de rede, arquivo ausente, módulo inválido
-  e tempo limite de 15 segundos. Falhas não deixam a página em “Verificando…”.
-- Testes conferem os argumentos efetivos de login, consulta, aprovação e recusa,
-  inclusive `skipBrowserRedirect`, além dos destinos de navegação.
-- Cobertura de expiração, respostas ausentes, conteúdo não executável, URLs
-  maliciosas, isolamento de credenciais, alterações indevidas no ambiente e
-  preservação de serviços Docker que não pertencem ao teste.
-- Chromium gerenciado pelo Playwright, com opção de executável externo, e
-  dependências fixadas em `requirements-test.txt`.
-- GitHub Actions com regressão e integração real em Docker, permissões mínimas,
-  actions fixadas por SHA, sem segredos de produção e sem etapa de deploy.
+- Estrutura e políticas da tabela foram fornecidas pelo responsável e reproduzidas somente no banco isolado.
+- A migração acrescenta uma função `SECURITY INVOKER`; mantém as políticas existentes e não usa service_role para gravar lançamentos.
+- A identidade é `auth.uid()`, derivada do JWT. A ferramenta não aceita user_id.
+- O MCP verifica assinatura, emissor, público, validade, papel e Client ID autorizado.
+- O formato é o existente: id/date/type/category/amount/description. Centavos inteiros evitam ambiguidade de escala.
+- UUID estável torna uma repetição idempotente. Reutilizá-lo com valores diferentes retorna erro, sem substituir o registro.
+- Bloqueio transacional e updated_at monotônico preservam a proteção de concorrência já existente no aplicativo.
+- Lançamentos e demais propriedades anteriores do JSON são preservados. Um JSON incompatível é recusado em vez de ser apagado/reconstruído.
+- A atualização em segundo plano não interrompe formulários e não deve aplicar respostas de outra sessão.
 
-## Resultados dos testes
+O fonte original recebido continua preservado em `tests/fixtures/nexo-mcp-test-v2.ts`,
+SHA256 `70eb6c1a53de3c2770ec2f91319aece2e76f98f083d5818d5c5df443254e206d`.
+A versão funcional está em `supabase/functions/nexo-mcp-test/index.ts`.
 
-| Verificação | Resultado |
-| --- | --- |
-| Regressão e segurança no Codex | 51 testes passaram; resultado do CI da revisão atual disponível nos checks do PR |
-| Instalação Supabase no Codex | Postgres, Auth e gateway saudáveis; metadados REST responderam; login fictício passou |
-| Repetição da preparação | Conta preservada, sem reset; arquivo privado com permissão 600 |
-| OAuth real no Codex | Recusa, aprovação, consentimento anterior e identidade passaram |
-| Proteções OAuth | State preservado; PKCE divergente e reutilização do código recusados |
-| MCP real no Codex | Metadados, initialize, confirmação, tools/list e testar_conexao passaram |
-| Rejeições de autenticação MCP | Sem token, token inválido, login sem client_id, assinatura alterada e seis variações de claims recusados |
-| GitHub Actions | Regressão e integração real passaram nas execuções iniciais; cada atualização do PR executa novamente os dois jobs |
-| Integridade do fonte | Checksum original e equivalência da adaptação local passaram |
-| Configuração da imagem derivada | Configuração de execução inteira conferida contra a oficial, incluindo healthcheck |
-| Arquivos financeiros | Sem mudanças em bot.py, gastos.py, index.html ou nexo-teste.html |
+## Testes essenciais
 
-Evidências iniciais de CI com ambos os jobs aprovados:
-- https://github.com/BrunoSantana123/programacao/actions/runs/43679089467
-- https://github.com/BrunoSantana123/programacao/actions/runs/43679670775
+A suíte automatizada foi reaproveitada. O teste integrado exercita Supabase,
+OAuth, MCP, PostgreSQL/RLS e as páginas reais, sem respostas financeiras simuladas.
 
-Resultado da revisão mais recente: https://github.com/BrunoSantana123/programacao/pull/1/checks
-Os arquivos brutos de logs do GitHub ficaram indisponíveis pelo proxy; os estados
-individualizados dos jobs e etapas foram confirmados pela API. No Codex, os
-ensaios integrados emitiram os resultados PASS diretamente, sem expor credenciais.
-Não há testes ignorados ou resultados esperados de falha usados como aprovação.
+- Cadastro pelo celular e login no NEXO.
+- Consentimento OAuth, aprovação, recusa, state e PKCE; código reutilizado recusado.
+- Token comum de login, token inválido, assinatura/claims/cliente incorretos recusados pelo MCP.
+- Receitas e despesas gravadas pelo MCP aparecem no Financeiro com os valores corretos.
+- Repetição do mesmo pedido não duplica; pedido divergente com o mesmo UUID não substitui dados.
+- Duas gravações concorrentes são preservadas; PATCH antigo do app é recusado.
+- Dados anteriores do JSON permanecem intactos.
+- Duas contas com grants OAuth próprios só acessam seus dados; leitura, atualização, exclusão e inserção na conta alheia são bloqueadas.
+- Troca de conta no mesmo navegador, inclusive com uma renovação antiga pendente, não mostra os registros da conta anterior.
 
-Comandos reproduzíveis e limites: [TESTING.md](TESTING.md).
+Os resultados e a execução final do GitHub Actions estão na aba Checks do PR #1.
+As execuções locais concluídas passaram nos fluxos acima. Os 50 testes de regressão
+passaram; foi removido apenas o teste do adaptador antigo que se tornou
+inativo ao estender a função, mantendo o teste do arquivo original preservado.
 
-## Fonte recuperado e execução real
+## Limite indispensável para homologação real
 
-`tests/fixtures/nexo-mcp-test-v2.ts` preserva o arquivo fornecido pelo responsável.
-SHA256: `70eb6c1a53de3c2770ec2f91319aece2e76f98f083d5818d5c5df443254e206d`.
+**Não está publicado para teste dentro do ChatGPT.** Falta definir e configurar
+um ambiente HTTPS exclusivo de homologação para NEXO, consentimento e MCP.
+A conversa real e o ditado no ChatGPT não podem ser certificados usando apenas
+um endpoint local. O backend recebe o mesmo pedido estruturado depois da
+transcrição; não foi criado processamento de áudio fora do ChatGPT.
 
-A cópia executada altera somente configuração: emissor/recurso em loopback,
-JWKS pela rede interna Docker e exigência de modo local explícito. Um teste
-compara essa adaptação integralmente com o fonte original. Nenhum roteador MCP,
-ferramenta ou esquema financeiro ausente foi reconstruído por suposição.
+A chave pública, URL e Client ID desse ambiente precisam corresponder ao projeto
+isolado e ao callback do conector. Não se deve usar nem modificar a produção para
+concluir esse teste. Passos de homologação: [HOMOLOGACAO.md](HOMOLOGACAO.md).
 
-A função é executada pelo modo `--main-service` da imagem oficial Edge Runtime
-v1.69.28. Porta e aliases seguem o gateway do CLI oficial 2.67.3. Isso dispensa
-os imports deno.land do template genérico de `supabase functions serve` e mantém
-cada POST sujeito ao verificador JWT original. Não é necessário desativar JWT.
-
-O ensaio usa o HTML do PR e o SDK verdadeiro. Somente os identificadores públicos
-são adaptados em memória para o projeto local. Um cliente OAuth temporário é
-criado/removido no Auth local. O callback fictício é interceptado no navegador;
-state é conferido, e o código é trocado por token no servidor Auth real.
-Nenhum código é enviado ao ChatGPT ou a um domínio externo.
-
-## Dados e segurança
-
-A conta `nexo-test@example.invalid` tem senha aleatória, guardada em arquivo
-privado fora do checkout. A preparação verifica seu login e preserva a identidade
-em execuções seguintes. Credenciais locais, chaves e logs privados não entram no
-Git, em imagens construídas ou em artefatos públicos do CI.
-
-A fixture `nexo-synthetic.json` contém receitas/despesas inteiramente fictícias
-no formato do front-end. É preparada em arquivo, sem inserir em tabelas cujo
-esquema não foi fornecido. A função recuperada não usa banco: sua única ferramenta
-é `testar_conexao`. Portanto, não é necessário inventar um esquema para validá-la.
-
-JWT mantém assinatura ES256/RS256, issuer, audience, exp, sub, role e client_id.
-Os casos negativos usam somente a chave privada gerada no projeto LOCAL e
-confirmam rejeição no servidor real. Não há alteração de RLS ou de configuração
-remota. Nenhum endpoint financeiro foi chamado.
-
-O runtime recebe somente modo local e configuração de rede necessária. Não
-recebe as chaves administrativas do Supabase usadas pelo preparador. Sua pasta
-é montada em modo somente leitura; não há publicação de porta extra, privilégio
-adicional ou encerramento de containers alheios.
-
-O SDK é baixado por HTTPS verificado pelo cliente do Playwright com a confiança
-fornecida à sessão e encaminhado ao navegador. São os bytes reais da biblioteca,
-não respostas simuladas. Isso atende ao proxy do Codex sem alterar o banco de
-certificados do Chromium nem usar ignore_https_errors ou desativar TLS.
-
-## Recursos e rede do Codex
-
-O driver Docker vfs multiplicou o uso de recursos ao extrair as camadas originais
-do Postgres. O preparador, somente nesse driver e sem sobrescrever imagem já
-existente, usa crane/umoci oficiais com checksum verificado para aplicar o layout
-OCI fixado por digest e empacotar uma derivação local em uma camada. Preserva
-conteúdo, hardlinks, proprietários, ACLs, xattrs e configuração de execução.
-O original e o derivado têm identificadores distintos registrados em arquivo de
-proveniência; não se altera checksum esperado para aceitar artefato inválido.
-Nenhuma imagem é publicada e o daemon global não é modificado.
-
-A rota já fornecida ao Docker e o bundle público de confiança da sessão são
-reutilizados em arquivos privados externos ao Git. Exclusões existentes são
-preservadas e somente serviços locais são acrescentados ao NO_PROXY. Arquivos
-que contenham chave privada são recusados como bundle de CA.
-
-A inclusão de deno.land, inicialmente proposta para o roteador genérico, foi
-retirada do rascunho após validar o modo main-service. O fluxo final não precisa
-de nova liberação de rede. Instruções reutilizáveis foram salvas em start_skill.
-Salvar rascunho não publica nem aplica uma nova versão do ambiente.
-
-## 401, ferramentas e limites do parecer
-
-O 401 sem token é esperado e anuncia a descoberta de autorização. O fonte exige
-token OAuth com client_id; um token comum de login por senha não é suficiente.
-Isso foi confirmado no ensaio real: o token OAuth disponibilizou a ferramenta,
-e o token comum foi recusado. Não comprova qual token o ChatGPT enviou na
-ocorrência histórica, portanto não se afirma resolver conclusivamente aquele caso.
-
-O ensaio isolado não certifica o conector dentro do ChatGPT. Esse último passo
-exige um endpoint HTTPS exclusivo de testes e o consentimento pelo conector;
-não foi realizado deploy remoto nesta tarefa.
-
-A função fornecida é um teste de conexão, não um servidor financeiro completo.
-Ela anuncia openid e confere audience authenticated/client_id, mas não valida
-explicitamente o claim de escopo nem restringe um Client ID específico. Isso foi
-preservado. Antes de acrescentar ferramentas financeiras, revisar escopos,
-destinatários dos tokens, autorização por conta e as migrações/RLS reais.
-
-Não há bloqueio humano para repetir a suíte isolada. A publicação de uma nova
-versão do ambiente de desenvolvimento permanece sob controle do usuário.
-Nenhum merge ou deploy em produção foi realizado ou automatizado.
+Nenhum dado de produção, política remota, merge ou deploy em produção foi alterado.

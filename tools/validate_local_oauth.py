@@ -2,7 +2,7 @@
 
 Não simula o SDK ou as respostas do Auth. Só adapta os identificadores públicos
 da página em memória para o projeto local e intercepta o callback do cliente de
-teste. Não acessa produção, tabelas financeiras ou ferramentas MCP.
+teste. Acessa somente tabelas locais e ferramentas da versão de homologação; nunca produção.
 """
 import argparse
 import base64
@@ -54,7 +54,7 @@ def validate_environment(directory):
     if private.get('api_url') != 'http://127.0.0.1:54321':
         raise RuntimeError('Ambiente de autenticação deve ser exclusivamente local.')
     copied = directory / 'supabase/functions/nexo-mcp-test/index.ts'
-    expected = ROOT / 'tests/integration/nexo-mcp-test/index.ts'
+    expected = ROOT / 'supabase/functions/nexo-mcp-test/index.ts'
     if copied.read_bytes() != expected.read_bytes():
         raise RuntimeError('Função local diverge da cópia de testes revisada; execute a preparação novamente.')
     network = (directory / 'local-functions.env').read_bytes()
@@ -63,7 +63,7 @@ def validate_environment(directory):
         raise RuntimeError('Configuração local da função divergente.')
 
 
-def runtime_command(directory):
+def runtime_command(directory, client_id=None):
     project = tomllib.loads((directory / 'supabase/config.toml').read_text())['project_id']
     if not re.fullmatch(r'[A-Za-z0-9_-]+', project):
         raise RuntimeError('Identificador do projeto local inválido.')
@@ -86,6 +86,11 @@ def runtime_command(directory):
         if not separator or key not in allowed or len(decoded) != 1:
             raise RuntimeError('Variável inesperada no ambiente privado da função.')
         values[key] = decoded[0]
+    private_path = directory / 'private.json'
+    if private_path.exists():
+        state = json.loads(private_path.read_text())
+        values['SUPABASE_ANON_KEY'] = state['anon_key']
+        values['NEXO_OAUTH_CLIENT_IDS'] = client_id or ''
     name = 'nexo-mcp-runtime-' + secrets.token_hex(6)
     functions = directory / 'supabase/functions'
     command = ['docker', 'run', '--rm', '--name', name, '--network', network,
@@ -126,7 +131,7 @@ def verify_mcp(private, token, password_token, directory):
     status, _, listing = request(url, dict(jsonrpc='2.0', id=2, method='tools/list'), auth)
     assert status == 200
     tools = listing['result']['tools']
-    assert [t['name'] for t in tools] == ['testar_conexao']
+    assert [t['name'] for t in tools] == ['testar_conexao', 'registrar_lancamento']
     assert tools[0]['annotations']['readOnlyHint'] is True
     status, _, result = request(url, dict(jsonrpc='2.0', id=3, method='tools/call',
                                         params={'name': 'testar_conexao', 'arguments': {}}), auth)
@@ -150,7 +155,7 @@ def verify_mcp(private, token, password_token, directory):
     key = ec.derive_private_key(int.from_bytes(decode(jwk['d']), 'big'), ec.SECP256R1())
     header = encode(json.dumps(dict(alg='ES256', typ='JWT', kid=jwk['kid'])).encode())
     for field, value in [('exp', 1), ('aud', 'wrong-audience'), ('iss', 'https://example.invalid'),
-                         ('role', 'service_role'), ('client_id', None), ('sub', None)]:
+                         ('role', 'service_role'), ('client_id', None), ('sub', None), ('client_id', '00000000-0000-4000-8000-000000000000')]:
         modified = {**claims, field: value}
         if value is None:
             modified.pop(field)
@@ -159,10 +164,10 @@ def verify_mcp(private, token, password_token, directory):
         signature = encode(r.to_bytes(32, 'big') + s.to_bytes(32, 'big'))
         status, _, _ = request(url, initialize, {'Authorization': 'Bearer ' + content + '.' + signature})
         assert status == 401
-    print('PASS: MCP local real — descoberta, OAuth JWT, lista, ferramenta inofensiva e 6 rejeições de claims.')
+    print('PASS: MCP local real — descoberta, OAuth JWT, lista, ferramenta inofensiva e rejeição de claims/cliente inválidos.')
 
 
-def run(directory):
+def run(directory, client_id):
     private = json.loads((directory / 'private.json').read_text())
     origin, key = private['api_url'], private['anon_key']
     if origin != 'http://127.0.0.1:54321':
@@ -170,11 +175,7 @@ def run(directory):
     admin_key = private['service_role_key']
     password_session = api(origin, key, '/auth/v1/token?grant_type=password', {
         'email': private['email'], 'password': private['password']})
-    client = api(origin, admin_key, '/auth/v1/admin/oauth/clients', {
-        'client_name': 'NEXO local isolated validation', 'redirect_uris': [CALLBACK],
-        'grant_types': ['authorization_code', 'refresh_token'], 'response_types': ['code'],
-        'token_endpoint_auth_method': 'none'})
-    client_id = client['client_id']
+
 
     class Handler(http.server.BaseHTTPRequestHandler):
         def log_message(self, *args):
@@ -189,6 +190,13 @@ def run(directory):
             elif path == '/oauth-policy.js':
                 text = (ROOT / 'oauth-policy.js').read_text()
                 content_type = 'text/javascript'
+            elif path in ('/index.html', '/nexo-teste.html'):
+                text = (ROOT / path.lstrip('/')).read_text()
+                text = text.replace("const SB_URL='https://tznebgdgdqpbhjdrhprb.supabase.co';", 'const SB_URL=' + json.dumps(origin) + ';')
+                start = text.index('const SB_KEY=')
+                end = text.index(';', start)
+                text = text[:start] + 'const SB_KEY=' + json.dumps(key) + text[end:]
+                content_type = 'text/html'
             elif path == '/oauth-consent.html':
                 text = (ROOT / 'oauth-consent.html').read_text()
                 text = text.replace("const PROJECT = 'https://tznebgdgdqpbhjdrhprb.supabase.co';",
@@ -231,7 +239,7 @@ def run(directory):
                             raise RuntimeError('Auth não iniciou o consentimento.')
                         request_id = urllib.parse.parse_qs(urllib.parse.urlsplit(
                             response.headers['Location']).query)['authorization_id'][0]
-                    context = browser.new_context()
+                    context = browser.new_context(viewport={'width':390,'height':844} if decision in ('deny','previous') else {'width':1280,'height':800}, is_mobile=decision in ('deny','previous'), has_touch=decision in ('deny','previous'))
                     redirects, failures, network_failures = [], [], []
 
                     def route_request(route):
@@ -302,6 +310,8 @@ def run(directory):
                                     raise RuntimeError('Identidade OAuth divergente.')
                             if decision == 'approve':
                                 verify_mcp(private, token['access_token'], password_session['access_token'], directory)
+                                from tools.validate_financial_delivery import verify
+                                verify(browser, local_site, private, token['access_token'], client_id)
                                 try:
                                     api(origin, key, '/auth/v1/oauth/token', token_body)
                                 except urllib.error.HTTPError as exc:
@@ -323,10 +333,7 @@ def run(directory):
         server.shutdown()
         server.server_close()
         thread.join()
-        req = urllib.request.Request(origin + '/auth/v1/admin/oauth/clients/' + client_id,
-                                     method='DELETE', headers={'apikey': admin_key, 'Authorization': 'Bearer ' + admin_key})
-        with urllib.request.build_opener(urllib.request.ProxyHandler({})).open(req, timeout=20):
-            pass
+
 
 
 if __name__ == '__main__':
@@ -343,8 +350,14 @@ if __name__ == '__main__':
     # template genérico do CLI que depende de deno.land. JWT permanece no fonte.
     os.umask(0o077)
     log_path = directory / 'functions-private.log'
+    private = json.loads((directory / 'private.json').read_text())
+    client = api(private['api_url'], private['service_role_key'], '/auth/v1/admin/oauth/clients', {
+        'client_name': 'NEXO homologação isolada', 'redirect_uris': [CALLBACK],
+        'grant_types': ['authorization_code', 'refresh_token'], 'response_types': ['code'],
+        'token_endpoint_auth_method': 'none'})
+    client_id = client['client_id']
     with log_path.open('w') as log:
-        command, environment, container_name = runtime_command(directory)
+        command, environment, container_name = runtime_command(directory, client_id)
         process = subprocess.Popen(command, cwd=directory, stdout=log, stderr=log, env=environment)
         try:
             ready = False
@@ -361,7 +374,7 @@ if __name__ == '__main__':
                 time.sleep(0.5)
             if not ready:
                 raise RuntimeError('Edge Runtime local não ficou pronto.')
-            run(directory)
+            run(directory, client_id)
         except Exception as exc:
             import traceback
             # Somente tipo, HTTP status e posições no código; nunca valores de variáveis.
@@ -378,3 +391,7 @@ if __name__ == '__main__':
                 process.wait()
             # Nome aleatório criado por esta execução; nunca remover outro serviço.
             subprocess.run(['docker', 'rm', '--force', container_name], capture_output=True)
+            req = urllib.request.Request(private['api_url'] + '/auth/v1/admin/oauth/clients/' + client_id,
+                method='DELETE', headers={'apikey':private['service_role_key'], 'Authorization':'Bearer ' + private['service_role_key']})
+            with urllib.request.build_opener(urllib.request.ProxyHandler({})).open(req, timeout=20):
+                pass

@@ -11,6 +11,7 @@ from pathlib import Path
 import secrets
 import shutil
 import subprocess
+import tomllib
 import tarfile
 import urllib.error
 import urllib.request
@@ -86,8 +87,7 @@ def setup(directory):
     # Somente configuração LOCAL gerada pelo CLI; nenhuma política de produção.
     original = config.read_text()
     text = original
-    # PostgreSQL 15 é suportado pelo CLI e suficiente para Auth/MCP sem tabelas
-    # financeiras; usa imagem oficial menor para ambientes Docker com driver vfs.
+    # PostgreSQL 15 é compatível com Auth e a estrutura JSON fornecida; usa imagem oficial menor para ambientes Docker com driver vfs.
     text = text.replace('major_version = 17', 'major_version = 15')
     start = text.index('[auth.oauth_server]')
     end = text.find('\n[', start + 1)
@@ -111,13 +111,29 @@ def setup(directory):
     config.write_text(text)
     function = directory / 'supabase/functions/nexo-mcp-test'
     function.mkdir(parents=True, exist_ok=True)
-    shutil.copyfile(ROOT / 'tests/integration/nexo-mcp-test/index.ts', function / 'index.ts')
+    shutil.copyfile(ROOT / 'supabase/functions/nexo-mcp-test/index.ts', function / 'index.ts')
     network_fingerprint = prepare_container_network(directory)
     if text != original:
         # Aplicar mudanças de OAuth/chaves também na segunda execução, sem reset.
         # stop atua somente sobre o projeto LOCAL desse diretório e conserva dados.
         cli(directory, 'stop')
     cli(directory, 'start', '-x', EXCLUDE)
+    project = tomllib.loads(config.read_text())['project_id']
+    def sql(statement):
+        result = subprocess.run(['docker','exec','--interactive','supabase_db_' + project,
+            'psql','--username','postgres','--dbname','postgres','--no-psqlrc',
+            '--set=ON_ERROR_STOP=1','--tuples-only','--no-align'],
+            input=statement, capture_output=True, text=True)
+        if result.returncode:
+            diagnostic = directory / 'schema-private.log'
+            diagnostic.write_text(result.stderr)
+            diagnostic.chmod(0o600)
+            raise RuntimeError('Preparação do esquema local falhou; produção não foi acessada.')
+        return result.stdout.strip()
+    if sql("select to_regclass('public.nexo_data') is null;") == 't':
+        sql((ROOT / 'tests/integration/nexo-data-schema.sql').read_text())
+    sql((ROOT / 'supabase/migrations/20261115000100_registrar_lancamento.sql').read_text())
+    sql("NOTIFY pgrst, 'reload schema';")
     status = json.loads(cli(directory, 'status', '-o', 'json'))
     url = status['API_URL']
     if url != 'http://127.0.0.1:54321':
@@ -147,7 +163,7 @@ def setup(directory):
     path.chmod(0o600)
     shutil.copyfile(ROOT / 'tests/fixtures/nexo-synthetic.json', directory / 'nexo-synthetic.json')
     print('PASS: Supabase Docker local, OAuth habilitado e login da conta fictícia verificado.')
-    print('Fixture fictícia preparada em arquivo; não importada em tabelas sem esquema confirmado.')
+    print('PASS: esquema fornecido e gravação atômica preparados apenas no banco local, sem substituir registros.')
 
 
 if __name__ == '__main__':
