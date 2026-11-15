@@ -6,11 +6,12 @@ Requer Playwright Python e Chromium (disponíveis no ambiente de desenvolvimento
 import functools
 import http.server
 import json
+import os
 import pathlib
 import threading
 import unittest
 
-from playwright.sync_api import sync_playwright
+from playwright.sync_api import sync_playwright, expect
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 CLIENT = '451c10f2-5062-45a7-b4df-94664ecf212c'
@@ -32,8 +33,8 @@ class OAuthTests(unittest.TestCase):
         cls.thread.start()
         cls.base = f'http://127.0.0.1:{cls.server.server_port}'
         cls.pw = sync_playwright().start()
-        cls.browser = cls.pw.chromium.launch(executable_path='/usr/bin/chromium', headless=True,
-                                           args=['--no-sandbox'])
+        cls.browser = cls.pw.chromium.launch(
+            executable_path=os.environ.get('NEXO_CHROMIUM_EXECUTABLE') or None, headless=True)
 
     @classmethod
     def tearDownClass(cls):
@@ -53,25 +54,34 @@ class OAuthTests(unittest.TestCase):
                             user=dict(id='test-user'), scope='openid')
         self.login_error = False
         self.decision_error = False
+        self.details_error = False
+        self.records = []
+        self.page.expose_function('recordCall', lambda call: self.records.append(call))
         self.redirect = CALLBACK + '?code=test-code&state=test-state'
         self.calls = []
         self.destinations = []
 
         def sdk(route):
             payload = dict(details=self.details, loginError=self.login_error,
-                           decisionError=self.decision_error, redirect=self.redirect)
+                           decisionError=self.decision_error, redirect=self.redirect, detailsError=self.details_error)
             route.fulfill(content_type='text/javascript', body='''
 const fixture = %s;
 export function createClient(project, key, options) {
   window.sdkOptions = options;
   const decide = async (name, id, options) => {
-    window.decisions = [...(window.decisions || []), {name, id, options}];
+    await window.recordCall({name, id, options});
     return fixture.decisionError ? {error: {message:'failure'}} : {data: {redirect_url:fixture.redirect}};
   };
   return {auth: {
-    signInWithPassword: async () => fixture.loginError ? {error:{message:'failure'}} : {data:{user:{id:'test-user',email:'test@example.invalid'}}},
+    signInWithPassword: async (credentials) => {
+      await window.recordCall({name:'login', credentials});
+      return fixture.loginError ? {error:{message:'failure'}} : {data:{user:{id:'test-user',email:'test@example.invalid'}}};
+    },
     oauth: {
-      getAuthorizationDetails: async () => ({data:fixture.details}),
+      getAuthorizationDetails: async (id) => {
+        await window.recordCall({name:'details', id});
+        return fixture.detailsError ? {error:{message:'expired'}} : {data:fixture.details};
+      },
       approveAuthorization: (id, options) => decide('approve', id, options),
       denyAuthorization: (id, options) => decide('deny', id, options)
     }
@@ -107,6 +117,7 @@ export function createClient(project, key, options) {
         self.page.locator('[name=email]').fill('test@example.invalid')
         self.page.locator('[name=password]').fill('test-password')
         self.page.locator('#login button').click()
+        self.page.wait_for_function("!document.getElementById('login') || document.getElementById('login').hidden || !document.querySelector('#login button').disabled")
 
     def test_missing_request(self):
         self.open('')
@@ -140,6 +151,10 @@ export function createClient(project, key, options) {
         self.page.locator('#approve').click()
         self.page.wait_for_url(CALLBACK + '**')
         self.assertEqual(self.destinations, [self.redirect])
+        self.assertEqual(self.records, [
+            dict(name='login', credentials=dict(email='test@example.invalid', password='test-password')),
+            dict(name='details', id=REQUEST),
+            dict(name='approve', id=REQUEST, options=dict(skipBrowserRedirect=True))])
 
     def test_deny(self):
         self.redirect = CALLBACK + '?error=access_denied&state=test-state'
@@ -147,6 +162,7 @@ export function createClient(project, key, options) {
         self.page.locator('#deny').click()
         self.page.wait_for_url(CALLBACK + '**')
         self.assertEqual(self.destinations, [self.redirect])
+        self.assertEqual(self.records[-1], dict(name='deny', id=REQUEST, options=dict(skipBrowserRedirect=True)))
 
     def test_client_mismatch(self):
         self.details['client']['id'] = 'another-client'
@@ -172,14 +188,15 @@ export function createClient(project, key, options) {
         self.redirect = 'https://example.invalid/callback?code=test'
         self.login()
         self.page.locator('#approve').click()
-        self.assertIn('Destino não autorizado', self.page.locator('#status').inner_text())
+        expect(self.page.locator('#status')).to_contain_text('Destino não autorizado')
         self.assertEqual(self.destinations, [])
 
     def test_decision_failure(self):
         self.decision_error = True
         self.login()
         self.page.locator('#approve').click()
-        self.assertTrue(self.page.locator('#approve').is_enabled())
+        expect(self.page.locator('#status')).to_contain_text('Não foi possível concluir')
+        expect(self.page.locator('#approve')).to_be_enabled()
         self.assertEqual(self.destinations, [])
 
     def test_previously_consented(self):
@@ -187,6 +204,71 @@ export function createClient(project, key, options) {
         self.login()
         self.page.wait_for_url(CALLBACK + '**')
         self.assertEqual(self.destinations, [self.redirect])
+
+    def test_expired_request(self):
+        self.details_error = True
+        self.login()
+        expect(self.page.locator('#status')).to_contain_text('expirada')
+        self.assertTrue(self.page.locator('#consent').is_hidden())
+        self.assertEqual([c['name'] for c in self.records], ['login', 'details'])
+
+    def test_missing_details(self):
+        self.details = None
+        self.login()
+        expect(self.page.locator('#status')).to_contain_text('expirada')
+        self.assertTrue(self.page.locator('#consent').is_hidden())
+
+    def test_untrusted_previously_consented_redirect(self):
+        self.details = dict(redirect_url='https://example.invalid/?code=test')
+        self.login()
+        expect(self.page.locator('#status')).to_contain_text('Destino não autorizado')
+        self.assertEqual(self.destinations, [])
+
+    def test_untrusted_names_are_plain_text(self):
+        self.details['client']['name'] = '<img src=x onerror="window.injected=true">'
+        self.login()
+        self.assertEqual(self.page.locator('#client').inner_text(), self.details['client']['name'])
+        self.assertEqual(self.page.locator('#client img').count(), 0)
+        self.assertFalse(self.page.evaluate('Boolean(window.injected)'))
+
+    def assert_load_failure(self):
+        self.open()
+        expect(self.page.locator('#status')).to_contain_text('Não foi possível carregar')
+        self.assertTrue(self.page.locator('#login').is_hidden())
+        self.assertTrue(self.page.locator('#consent').is_hidden())
+        self.assertEqual(self.records, [])
+
+    def test_config_network_failure(self):
+        self.context.route('**/oauth-config.js', lambda r: r.abort())
+        self.assert_load_failure()
+
+    def test_policy_404(self):
+        self.context.route('**/oauth-policy.js', lambda r: r.fulfill(status=404, body='Not found'))
+        self.assert_load_failure()
+
+    def test_invalid_module(self):
+        self.context.route('**/oauth-policy.js', lambda r: r.fulfill(
+            content_type='text/javascript', body='invalid syntax !'))
+        self.assert_load_failure()
+
+    def test_sdk_network_failure(self):
+        self.context.route('https://cdn.jsdelivr.net/**', lambda r: r.abort())
+        self.assert_load_failure()
+
+    def test_module_timeout(self):
+        self.page.clock.install()
+        self.context.route('**/oauth-policy.js', lambda r: r.fulfill(
+            content_type='text/javascript', body='await new Promise(() => {});'))
+        self.page.goto(self.base + '/oauth-consent.html?authorization_id=' + REQUEST)
+        self.page.clock.fast_forward(16000)
+        expect(self.page.locator('#status')).to_contain_text('Não foi possível carregar')
+        self.assertTrue(self.page.locator('#login').is_hidden())
+        self.assertEqual(self.records, [])
+
+    def test_no_browser_session_storage(self):
+        self.login()
+        self.assertEqual(self.page.evaluate('Object.keys(localStorage)'), [])
+        self.assertEqual(self.page.evaluate('Object.keys(sessionStorage)'), [])
 
     def test_callback_policy(self):
         self.page.goto(self.base + '/oauth-consent.html')

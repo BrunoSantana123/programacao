@@ -1,3 +1,18 @@
+# Atualização da revisão e ambiente isolado — 15/11/2026
+
+- Carregamento dos módulos agora trata falhas de rede, arquivo ausente, JavaScript inválido e tempo limite de 15 segundos.
+- Testes reforçados conferem as chamadas de login, consulta, aprovação e recusa, inclusive `skipBrowserRedirect`.
+- 35 testes de regressão, segurança do utilitário e preservação do fonte recuperado passaram localmente.
+- Workflow GitHub Actions preparado com regressão e integração Docker local, sem segredos de produção ou deploy.
+- Fonte `nexo-mcp-test-v2.ts` fornecido pelo responsável foi preservado integralmente; a adaptação local altera somente configuração. A função não acessa o banco financeiro.
+- A execução integrada local está em andamento. O driver Docker `vfs` esgotou o disco ao extrair PostgreSQL 17; foi selecionada a versão oficial 15, suportada pelo CLI. Não se afirma sucesso dessa etapa até concluir.
+- Conta e fixtures são exclusivas do ambiente local. A fixture foi preparada em arquivo; nenhuma tabela ausente foi inventada.
+- Procedimentos reproduzíveis e limites estão em [TESTING.md](TESTING.md).
+
+As observações abaixo registram a investigação original, anterior ao recebimento do fonte da função e à liberação da rede. Os resultados finais da execução integrada serão acrescentados após sua conclusão.
+
+---
+
 # Correção do consentimento NEXO / ChatGPT
 
 ## Diagnóstico confirmado

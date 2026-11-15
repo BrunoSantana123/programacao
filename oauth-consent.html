@@ -9,21 +9,25 @@
 <form id="login" hidden><label>E-mail da sua conta NEXO<input name="email" type="email" autocomplete="username" required></label><label>Senha<input name="password" type="password" autocomplete="current-password" required></label><button>Entrar para conferir acesso</button></form>
 <section id="consent" hidden><p>Aplicativo: <strong id="client"></strong><br>Conta: <strong id="account"></strong></p><p>Permissões OAuth solicitadas: <span id="scope"></span></p><p>Esta conexão pode permitir acesso aos seus dados do NEXO e operações conforme as permissões concedidas pelo servidor. Autorize somente se reconhecer o aplicativo.</p><p><small>Destino: <span id="callback"></span></small></p><button id="approve">Autorizar conexão</button><button id="deny" class="secondary">Negar acesso</button></section>
 <p><a href="./">Voltar ao NEXO</a></p></main>
-<script type="module">
+<script>
 const PROJECT = 'https://tznebgdgdqpbhjdrhprb.supabase.co';
 const PUBLISHABLE_KEY = 'sb_publishable_0wRceuGGJaPnvA154onvEw_kQa-XCgp';
-// Configuração pública conferida com o registro OAuth; nunca incluir Client Secret.
-import { TRUSTED_CLIENT_ID, TRUSTED_CALLBACK } from './oauth-config.js';
-import { validCallback, sameCallback } from './oauth-policy.js';
 const $ = id => document.getElementById(id);
 const status = t => { $('status').textContent = t; };
 const request = new URLSearchParams(location.search).get('authorization_id');
-const allowedCallback = (url, response = false) => sameCallback(url, TRUSTED_CALLBACK, response);
+// Importações dinâmicas permitem informar falhas de rede, módulos ausentes e espera excessiva.
+async function loadModule(url){
+ let timer;
+ try{return await Promise.race([import(url),new Promise((_,reject)=>{timer=setTimeout(()=>reject(Error('Tempo de carregamento excedido.')),15000);})]);}
+ finally{clearTimeout(timer);}
+}
 async function main(){
  if(!request){status('Página de conexão disponível. Inicie a solicitação pelo ChatGPT quando a integração estiver configurada.');return;}
- if(!TRUSTED_CLIENT_ID||!validCallback(TRUSTED_CALLBACK)){status('Integração em configuração. Nenhum acesso pode ser autorizado neste momento.');return;}
  if(!/^[\w-]{1,200}$/.test(request)){status('Solicitação inválida.');return;}
- const {createClient}=await import('https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.119.0/+esm');
+ const [{TRUSTED_CLIENT_ID,TRUSTED_CALLBACK},{validCallback,sameCallback}]=await Promise.all([loadModule('./oauth-config.js'),loadModule('./oauth-policy.js')]);
+ if(!TRUSTED_CLIENT_ID||!validCallback(TRUSTED_CALLBACK)){status('Integração em configuração. Nenhum acesso pode ser autorizado neste momento.');return;}
+ const allowedCallback = (url, response = false) => sameCallback(url, TRUSTED_CALLBACK, response);
+ const {createClient}=await loadModule('https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.119.0/+esm');
  const sb=createClient(PROJECT,PUBLISHABLE_KEY,{auth:{persistSession:false,autoRefreshToken:false,detectSessionInUrl:false}});
  const login=$('login'), consent=$('consent');
  login.hidden=false;status('Entre com sua própria conta NEXO para conferir a solicitação.');
