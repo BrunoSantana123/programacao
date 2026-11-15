@@ -1,3 +1,5 @@
+> Pacote operacional completo: [supabase/production/README.md](supabase/production/README.md). O responsável informa que o ChatGPT possui acesso administrativo; a instalação pode ser executada por essa conexão usando os arquivos deste pacote.
+
 # NEXO oficial + ChatGPT — integração e relatório técnico
 
 ## Estado desta entrega

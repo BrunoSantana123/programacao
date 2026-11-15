@@ -15,3 +15,5 @@ A versão de cadastro, conexão OAuth e receitas/despesas pelo ChatGPT está pre
 A recuperação de senha exclusiva do NEXO-HOMOLOG está em [RECUPERACAO-HOMOLOG.md](RECUPERACAO-HOMOLOG.md), com testes e configurações pendentes, sem mudanças no NEXO oficial.
 
 Integração oficial com ChatGPT, consultas, testes de duas contas e limites de voz: [CHATGPT-INTEGRACAO.md](CHATGPT-INTEGRACAO.md).
+
+Pacote para concluir a instalação no NEXO-APP: [SQL, servidor MCP e roteiro de produção](supabase/production/README.md). Os arquivos estão no PR #1; este envio não aplica mudanças em produção.
