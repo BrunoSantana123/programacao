@@ -29,6 +29,9 @@ def cli(directory, *args):
         log = directory / 'setup-private.log'
         log.write_text(result.stdout + result.stderr)
         log.chmod(0o600)
+        print('Etapa CLI local recusada:', args[0], 'exit', result.returncode)
+        if 'no space left on device' in (result.stdout + result.stderr).lower():
+            print('Diagnóstico: espaço insuficiente para as imagens Docker.')
         raise RuntimeError('CLI falhou; diagnóstico está no arquivo privado do ambiente local.')
     return result.stdout
 
@@ -148,6 +151,10 @@ if __name__ == '__main__':
     os.umask(0o077)
     try:
         setup(args.directory)
-    except Exception:
+    except Exception as exc:
+        import traceback
+        positions = traceback.extract_tb(exc.__traceback__)
+        print('Diagnóstico seguro:', type(exc).__name__, 'HTTP', getattr(exc, 'code', '-'),
+              [(Path(p.filename).name, p.lineno) for p in positions if p.filename.endswith('setup_local_test.py')])
         # Erros HTTP podem carregar senhas ou chaves; não imprimir exceções brutas.
         raise SystemExit('Preparação local bloqueada; consulte a documentação e os diagnósticos privados.')
