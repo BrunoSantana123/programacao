@@ -2,4 +2,6 @@ leads.json
 gastos.json
 historico.json
 __pycache__/
+
+/dist-homolog/
 *.pyc

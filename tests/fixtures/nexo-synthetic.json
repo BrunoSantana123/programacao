@@ -1,0 +1,13 @@
+{
+  "entries": [
+    {"id": "fixture-income", "date": "2026-01-10", "type": "income", "category": "Teste fictício", "amount": 150, "description": "DADO FICTÍCIO — não importar em produção"},
+    {"id": "fixture-expense", "date": "2026-01-10", "type": "expense", "category": "Teste fictício", "amount": 25, "description": "DADO FICTÍCIO — não importar em produção"}
+  ],
+  "bills": [],
+  "events": [],
+  "goals": [],
+  "tasks": [],
+  "reserves": [],
+  "categories": {"income": ["Teste fictício"], "expense": ["Teste fictício"], "reserve": []},
+  "settings": {}
+}

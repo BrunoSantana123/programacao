@@ -7,36 +7,43 @@
 :root{color-scheme:dark;--a:#00e5ed}*{box-sizing:border-box}body{margin:0;min-height:100vh;display:grid;place-items:center;padding:24px;background:radial-gradient(ellipse at top,#10303a,#080c12 60%);font:16px system-ui;color:#e8eef3}main{width:min(100%,470px);background:#111922;border:1px solid #2a404a;padding:30px;border-radius:22px;box-shadow:0 24px 70px #0008}h1{letter-spacing:.22em;color:var(--a);margin:0}h2{font-size:23px}p,li{line-height:1.5;color:#b9c6d0}label{display:block;margin-top:12px}input,button{width:100%;padding:13px;margin-top:8px;border:1px solid #344b58;border-radius:10px;font:inherit}input{background:#090f15;color:white}button{background:var(--a);color:#052025;font-weight:750;cursor:pointer}button.secondary{background:#202d38;color:#e8eef3}button:disabled{opacity:.5;cursor:not-allowed}small{color:#9aabb6}a{color:var(--a)}[hidden]{display:none!important}#status{overflow-wrap:anywhere}#client,#account,#callback,#scope{overflow-wrap:anywhere}
 </style></head><body><main><h1>NEXO</h1><small>ASSISTANT • CONEXÃO INDIVIDUAL</small><h2>Autorizar conexão</h2><p id="status" role="status" aria-live="polite">Verificando solicitação…</p>
 <form id="login" hidden><label>E-mail da sua conta NEXO<input name="email" type="email" autocomplete="username" required></label><label>Senha<input name="password" type="password" autocomplete="current-password" required></label><button>Entrar para conferir acesso</button></form>
-<section id="consent" hidden><p>Aplicativo: <strong id="client"></strong><br>Conta: <strong id="account"></strong></p><p>Permissões OAuth solicitadas: <span id="scope"></span></p><p>Esta conexão pode permitir acesso aos seus dados do NEXO e operações conforme as permissões concedidas pelo servidor. Autorize somente se reconhecer o aplicativo.</p><p><small>Destino: <span id="callback"></span></small></p><button id="approve">Autorizar conexão</button><button id="deny" class="secondary">Negar acesso</button></section>
+<section id="consent" hidden><p>Aplicativo: <strong id="client"></strong><br>Conta: <strong id="account"></strong></p><p>Permissões OAuth solicitadas: <span id="scope"></span></p><p>Esta conexão permite ao ChatGPT registrar receitas e despesas, consultar saldo e movimentações na sua própria conta NEXO. Autorize somente se reconhecer o aplicativo.</p><p><small>Destino: <span id="callback"></span></small></p><button id="approve">Autorizar conexão</button><button id="deny" class="secondary">Negar acesso</button></section>
 <p><a href="./">Voltar ao NEXO</a></p></main>
-<script type="module">
+<script>
 const PROJECT = 'https://tznebgdgdqpbhjdrhprb.supabase.co';
 const PUBLISHABLE_KEY = 'sb_publishable_0wRceuGGJaPnvA154onvEw_kQa-XCgp';
-// Preencher somente após confirmar o ID do cliente e a URI de retorno no painel.
-const TRUSTED_CLIENT_ID = '';
-const TRUSTED_CALLBACK = '';
 const $ = id => document.getElementById(id);
 const status = t => { $('status').textContent = t; };
 const request = new URLSearchParams(location.search).get('authorization_id');
-function sameCallback(raw){try{const u=new URL(raw),t=new URL(TRUSTED_CALLBACK);return u.protocol==='https:'&&u.origin===t.origin&&u.pathname===t.pathname&&!u.username&&!u.password&&!u.hash;}catch{return false;}}
+// Importações dinâmicas permitem informar falhas de rede, módulos ausentes e espera excessiva.
+async function loadModule(url){
+ let timer;
+ try{return await Promise.race([import(url),new Promise((_,reject)=>{timer=setTimeout(()=>reject(Error('Tempo de carregamento excedido.')),15000);})]);}
+ finally{clearTimeout(timer);}
+}
 async function main(){
  if(!request){status('Página de conexão disponível. Inicie a solicitação pelo ChatGPT quando a integração estiver configurada.');return;}
- if(!TRUSTED_CLIENT_ID||!TRUSTED_CALLBACK){status('Integração em configuração. Nenhum acesso pode ser autorizado neste momento.');return;}
  if(!/^[\w-]{1,200}$/.test(request)){status('Solicitação inválida.');return;}
- const {createClient}=await import('https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.119.0/+esm');
+ const [configuration,{validCallback,sameCallback}]=await Promise.all([loadModule('./oauth-config.js'),loadModule('./oauth-policy.js')]);
+ const trusted = configuration.TRUSTED_CLIENTS ?? [{clientId:configuration.TRUSTED_CLIENT_ID,callback:configuration.TRUSTED_CALLBACK}];
+ if(!Array.isArray(trusted)||!trusted.length||trusted.some(p=>!p||typeof p.clientId!=='string'||!p.clientId||!validCallback(p.callback))||new Set(trusted.map(p=>p.clientId)).size!==trusted.length){status('Integração em configuração. Nenhum acesso pode ser autorizado neste momento.');return;}
+ let selectedClient = null;
+ const allowedCallback = (url,response=false) => Boolean(selectedClient && sameCallback(url,selectedClient.callback,response));
+ const {createClient}=await loadModule('https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.119.0/+esm');
  const sb=createClient(PROJECT,PUBLISHABLE_KEY,{auth:{persistSession:false,autoRefreshToken:false,detectSessionInUrl:false}});
  const login=$('login'), consent=$('consent');
  login.hidden=false;status('Entre com sua própria conta NEXO para conferir a solicitação.');
  let busy=false;
- function back(url){if(!sameCallback(url))throw Error('Destino não autorizado.');location.replace(url);}
+ function back(url){if(!allowedCallback(url,true))throw Error('Destino não autorizado.');location.replace(url);}
  login.addEventListener('submit',async e=>{
   e.preventDefault();if(busy)return;busy=true;const btn=login.querySelector('button');btn.disabled=true;
   const fd=new FormData(login);const email=String(fd.get('email')).trim(),password=String(fd.get('password'));login.elements.password.value='';
   try{
    const {data:s,error:a}=await sb.auth.signInWithPassword({email,password});if(a||!s?.user)throw Error('Não foi possível entrar. Confira e-mail e senha.');
    const {data:d,error:b}=await sb.auth.oauth.getAuthorizationDetails(request);if(b||!d)throw Error('Solicitação não encontrada ou expirada.');
-   if(!('authorization_id' in d)){if(!sameCallback(d.redirect_url))throw Error('Destino não autorizado.');back(d.redirect_url);return;}
-   if(d.client?.id!==TRUSTED_CLIENT_ID || !sameCallback(d.redirect_uri))throw Error('Aplicativo não autorizado para o NEXO.');
+   if(!('authorization_id' in d)){selectedClient=trusted.find(p=>sameCallback(d.redirect_url,p.callback,true));if(!allowedCallback(d.redirect_url,true))throw Error('Destino não autorizado.');back(d.redirect_url);return;}
+   selectedClient=trusted.find(p=>p.clientId===d.client?.id);
+   if(d.authorization_id!==request || d.user?.id!==s.user.id || !selectedClient || !allowedCallback(d.redirect_uri))throw Error('Aplicativo não autorizado para o NEXO.');
    $('client').textContent=d.client.name||'NEXO Assistant';$('account').textContent=s.user.email||'Conta autenticada';$('callback').textContent=d.redirect_uri;$('scope').textContent=d.scope||'Não informado';
    login.hidden=true;consent.hidden=false;status('Confira a conta e escolha se deseja permitir o acesso.');
   }catch(err){status(err.message||'Falha na conexão.');}finally{busy=false;btn.disabled=false;}
