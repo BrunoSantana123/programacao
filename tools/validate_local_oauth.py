@@ -12,9 +12,12 @@ import json
 import os
 from pathlib import Path
 import secrets
+import shlex
 import subprocess
 import threading
 import time
+import tomllib
+import re
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -25,6 +28,77 @@ from tools.setup_local_test import api
 
 ROOT = Path(__file__).resolve().parents[1]
 CALLBACK = 'https://example.invalid/nexo-test/callback'
+EDGE_IMAGE = 'supabase/edge-runtime:v1.69.28'
+
+
+def browser_options():
+    options = dict(executable_path=os.environ.get('NEXO_CHROMIUM_EXECUTABLE') or None, headless=True)
+    proxy = os.environ.get('HTTPS_PROXY') or os.environ.get('https_proxy')
+    if proxy:
+        parsed = urllib.parse.urlsplit(proxy)
+        if parsed.scheme not in ('http', 'https') or not parsed.hostname:
+            raise RuntimeError('Rota de proxy do navegador inválida.')
+        host = '[' + parsed.hostname + ']' if ':' in parsed.hostname else parsed.hostname
+        server = parsed.scheme + '://' + host + (':' + str(parsed.port) if parsed.port else '')
+        bypass = os.environ.get('NO_PROXY') or os.environ.get('no_proxy', '')
+        options['proxy'] = {'server': server, 'bypass': ','.join(filter(None, [bypass, '127.0.0.1', 'localhost']))}
+        if parsed.username:
+            options['proxy']['username'] = urllib.parse.unquote(parsed.username)
+        if parsed.password:
+            options['proxy']['password'] = urllib.parse.unquote(parsed.password)
+    return options
+
+
+def validate_environment(directory):
+    private = json.loads((directory / 'private.json').read_text())
+    if private.get('api_url') != 'http://127.0.0.1:54321':
+        raise RuntimeError('Ambiente de autenticação deve ser exclusivamente local.')
+    copied = directory / 'supabase/functions/nexo-mcp-test/index.ts'
+    expected = ROOT / 'tests/integration/nexo-mcp-test/index.ts'
+    if copied.read_bytes() != expected.read_bytes():
+        raise RuntimeError('Função local diverge da cópia de testes revisada; execute a preparação novamente.')
+    network = (directory / 'local-functions.env').read_bytes()
+    if (not network.startswith(b'NEXO_TEST_MODE=local\n')
+            or hashlib.sha256(network).hexdigest() != private.get('network_env_sha256')):
+        raise RuntimeError('Configuração local da função divergente.')
+
+
+def runtime_command(directory):
+    project = tomllib.loads((directory / 'supabase/config.toml').read_text())['project_id']
+    if not re.fullmatch(r'[A-Za-z0-9_-]+', project):
+        raise RuntimeError('Identificador do projeto local inválido.')
+    network = 'supabase_network_' + project
+    # Recusar concorrência com outro runtime sem encerrar processos alheios.
+    result = subprocess.run(['docker', 'network', 'inspect', network], capture_output=True, text=True, check=True)
+    members = json.loads(result.stdout)[0].get('Containers', {})
+    for identifier in members:
+        result = subprocess.run(['docker', 'inspect', identifier, '--format',
+                                 '{{json .NetworkSettings.Networks}}'], capture_output=True, text=True, check=True)
+        aliases = json.loads(result.stdout).get(network, {}).get('Aliases') or []
+        if 'edge_runtime' in aliases or 'supabase_edge_runtime_' + project in aliases:
+            raise RuntimeError('Já existe um Edge Runtime nessa rede; não será encerrado pelo teste.')
+    allowed = {'NEXO_TEST_MODE', 'HTTP_PROXY', 'HTTPS_PROXY', 'NO_PROXY', 'http_proxy',
+               'https_proxy', 'no_proxy', 'DENO_CERT', 'SSL_CERT_FILE', 'DENO_TLS_CA_STORE'}
+    values = {}
+    for line in (directory / 'local-functions.env').read_text().splitlines():
+        key, separator, quoted = line.partition('=')
+        decoded = shlex.split(quoted)
+        if not separator or key not in allowed or len(decoded) != 1:
+            raise RuntimeError('Variável inesperada no ambiente privado da função.')
+        values[key] = decoded[0]
+    name = 'nexo-mcp-runtime-' + secrets.token_hex(6)
+    functions = directory / 'supabase/functions'
+    command = ['docker', 'run', '--rm', '--name', name, '--network', network,
+               '--network-alias', 'edge_runtime', '--network-alias',
+               'supabase_edge_runtime_' + project, '--mount',
+               f'type=bind,src={functions},dst={functions},readonly',
+               '--volume', 'nexo_mcp_deno_cache_' + project + ':/root/.cache/deno']
+    for key in values:
+        # Somente nomes nos argumentos; valores privados vêm do ambiente do processo.
+        command.extend(['--env', key])
+    command.extend(['--entrypoint', 'edge-runtime', EDGE_IMAGE, 'start',
+                    '--main-service=' + str(functions / 'nexo-mcp-test'), '--port=8081'])
+    return command, {**os.environ, **values}, name
 
 
 def verify_mcp(private, token, password_token, directory):
@@ -138,8 +212,7 @@ def run(directory):
     local_site = 'http://127.0.0.1:' + str(server.server_port)
     try:
         with sync_playwright() as pw:
-            browser = pw.chromium.launch(
-                executable_path=os.environ.get('NEXO_CHROMIUM_EXECUTABLE') or None, headless=True)
+            browser = pw.chromium.launch(**browser_options())
             try:
                 for decision in ['deny', 'approve', 'previous', 'bad-pkce']:
                     verifier = secrets.token_urlsafe(48)
@@ -159,14 +232,23 @@ def run(directory):
                         request_id = urllib.parse.parse_qs(urllib.parse.urlsplit(
                             response.headers['Location']).query)['authorization_id'][0]
                     context = browser.new_context()
-                    redirects, failures = [], []
+                    redirects, failures, network_failures = [], [], []
 
                     def route_request(route):
                         url = route.request.url
                         if url.startswith(CALLBACK + '?'):
                             redirects.append(url)
                             route.fulfill(content_type='text/html', body='Local test callback')
-                        elif any(url.startswith(base + '/') for base in [origin, local_site, 'https://cdn.jsdelivr.net']):
+                        elif url.startswith('https://cdn.jsdelivr.net/'):
+                            # Bytes reais do SDK, obtidos pelo cliente HTTPS do
+                            # Playwright com a CA da sessão fornecida ao Node.
+                            # Não desativar TLS nem simular respostas do SDK.
+                            try:
+                                route.fulfill(response=route.fetch(max_redirects=0))
+                            except Exception:
+                                failures.append('Falha no download HTTPS verificado do SDK')
+                                route.abort()
+                        elif any(url.startswith(base + '/') for base in [origin, local_site]):
                             route.continue_()
                         else:
                             failures.append('Destino não autorizado bloqueado')
@@ -176,6 +258,10 @@ def run(directory):
                     try:
                         page = context.new_page()
                         page.on('pageerror', lambda _: failures.append('Erro JavaScript'))
+                        page.on('requestfailed', lambda req: network_failures.append((
+                            urllib.parse.urlsplit(req.url).hostname,
+                            re.search(r'net::[A-Z_]+', req.failure or '').group()
+                            if re.search(r'net::[A-Z_]+', req.failure or '') else 'request_failed')))
                         page.goto(local_site + '/oauth-consent.html?authorization_id=' + urllib.parse.quote(request_id))
                         expect(page.locator('#login')).to_be_visible(timeout=30000)
                         page.locator('[name=email]').fill(private['email'])
@@ -225,6 +311,10 @@ def run(directory):
                                     raise RuntimeError('Reutilização do código foi aceita.')
                                 print('PASS: OAuth local real — reutilização do código recusada.')
                         print('PASS: OAuth local real — ' + decision + ' (SDK, state e retorno conferidos).')
+                    except Exception:
+                        # Somente domínio e código de transporte, nunca URL, senha ou token.
+                        print('Fase OAuth local:', decision, 'falhas de rede:', network_failures)
+                        raise
                     finally:
                         context.close()
             finally:
@@ -244,14 +334,18 @@ if __name__ == '__main__':
     parser.add_argument('--directory', required=True, type=Path)
     args = parser.parse_args()
     directory = args.directory.resolve()
-    # O CLI inicia o Edge Runtime local; encerrar somente o processo desta execução.
+    try:
+        validate_environment(directory)
+    except Exception:
+        raise SystemExit('Ambiente local não corresponde à preparação revisada; nenhum serviço foi iniciado.')
+    # Executar diretamente o fonte fornecido no modo main-service oficialmente
+    # suportado, sem reconstruir roteador ou funções ausentes e sem importar o
+    # template genérico do CLI que depende de deno.land. JWT permanece no fonte.
     os.umask(0o077)
     log_path = directory / 'functions-private.log'
     with log_path.open('w') as log:
-        process = subprocess.Popen([str(directory / 'bin/supabase'), 'functions', 'serve',
-                                    'nexo-mcp-test', '--env-file', str(directory / 'local-functions.env')],
-                                   cwd=directory, stdout=log, stderr=log,
-                                   env={**os.environ, 'SUPABASE_INTERNAL_IMAGE_REGISTRY': 'docker.io'})
+        command, environment, container_name = runtime_command(directory)
+        process = subprocess.Popen(command, cwd=directory, stdout=log, stderr=log, env=environment)
         try:
             ready = False
             for _ in range(360):
@@ -282,3 +376,5 @@ if __name__ == '__main__':
             except subprocess.TimeoutExpired:
                 process.kill()
                 process.wait()
+            # Nome aleatório criado por esta execução; nunca remover outro serviço.
+            subprocess.run(['docker', 'rm', '--force', container_name], capture_output=True)

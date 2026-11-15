@@ -15,6 +15,9 @@ import tarfile
 import urllib.error
 import urllib.request
 
+from tools.prepare_vfs_postgres import prepare as prepare_vfs_postgres
+from tools.container_network import prepare as prepare_container_network
+
 ROOT = Path(__file__).resolve().parents[1]
 VERSION = '2.67.3'
 EXCLUDE = 'realtime,storage-api,imgproxy,mailpit,postgres-meta,studio,edge-runtime,logflare,vector,supavisor'
@@ -70,11 +73,13 @@ def install(directory):
 
 def setup(directory):
     directory = directory.resolve()
-    if directory == ROOT or ROOT in directory.parents:
+    if (len(directory.parts) < 3 or directory == ROOT or ROOT in directory.parents
+            or directory in ROOT.parents):
         raise RuntimeError('O ambiente e suas credenciais devem ficar fora do checkout.')
     directory.mkdir(parents=True, exist_ok=True, mode=0o700)
     directory.chmod(0o700)
     install(directory)
+    prepare_vfs_postgres(directory)
     config = directory / 'supabase/config.toml'
     if not config.exists():
         cli(directory, 'init')
@@ -99,15 +104,15 @@ def setup(directory):
         signing_path.chmod(0o600)
     text = text.replace('# signing_keys_path = "./signing_keys.json"',
                         'signing_keys_path = "./signing_keys.json"')
-    if '[functions.nexo-mcp-test]' not in text:
-        # O gateway deve deixar metadados públicos chegarem à função. A própria
-        # função mantém jwtVerify/issuer/audience/algorithms/claims em cada POST.
-        text += '\n[functions.nexo-mcp-test]\nverify_jwt = false\n'
+    # Remover somente o bloco gerado na preparação anterior com CLI serve.
+    # O modo main-service usa o verificador original da própria função e não
+    # necessita de opção para desativar a verificação de JWT do roteador do CLI.
+    text = text.replace('\n[functions.nexo-mcp-test]\nverify_jwt = false\n', '\n')
     config.write_text(text)
     function = directory / 'supabase/functions/nexo-mcp-test'
     function.mkdir(parents=True, exist_ok=True)
     shutil.copyfile(ROOT / 'tests/integration/nexo-mcp-test/index.ts', function / 'index.ts')
-    (directory / 'local-functions.env').write_text('NEXO_TEST_MODE=local\n')
+    network_fingerprint = prepare_container_network(directory)
     if text != original:
         # Aplicar mudanças de OAuth/chaves também na segunda execução, sem reset.
         # stop atua somente sobre o projeto LOCAL desse diretório e conserva dados.
@@ -136,7 +141,8 @@ def setup(directory):
     if state.get('user_id') and session['user']['id'] != state['user_id']:
         raise RuntimeError('Identidade da conta local divergente.')
     state.update(user_id=session['user']['id'], api_url=url,
-                 anon_key=status['ANON_KEY'], service_role_key=status['SERVICE_ROLE_KEY'])
+                 anon_key=status['ANON_KEY'], service_role_key=status['SERVICE_ROLE_KEY'],
+                 network_env_sha256=network_fingerprint)
     path.write_text(json.dumps(state))
     path.chmod(0o600)
     shutil.copyfile(ROOT / 'tests/fixtures/nexo-synthetic.json', directory / 'nexo-synthetic.json')
@@ -153,8 +159,13 @@ if __name__ == '__main__':
         setup(args.directory)
     except Exception as exc:
         import traceback
+        if hasattr(exc, 'private_diagnostic'):
+            diagnostic = args.directory / 'image-tools-private.log'
+            diagnostic.write_text(exc.private_diagnostic)
+            diagnostic.chmod(0o600)
         positions = traceback.extract_tb(exc.__traceback__)
         print('Diagnóstico seguro:', type(exc).__name__, 'HTTP', getattr(exc, 'code', '-'),
-              [(Path(p.filename).name, p.lineno) for p in positions if p.filename.endswith('setup_local_test.py')])
+              [(Path(p.filename).name, p.lineno) for p in positions
+               if p.filename.endswith(('setup_local_test.py', 'prepare_vfs_postgres.py'))])
         # Erros HTTP podem carregar senhas ou chaves; não imprimir exceções brutas.
         raise SystemExit('Preparação local bloqueada; consulte a documentação e os diagnósticos privados.')

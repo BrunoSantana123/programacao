@@ -34,13 +34,34 @@ ambiente e a conta fictícia em execuções seguintes, sem resetar o banco.
 Usa o espelho oficial das imagens no Docker Hub, pois ECR foi bloqueado na rede
 do ambiente de desenvolvimento. O primeiro download pode levar vários minutos.
 
+No Docker com driver `vfs`, as camadas originais da imagem podem multiplicar o
+consumo de disco e inodes. Apenas nesse caso, e se a imagem ainda não existir,
+o preparador deriva uma cópia local em uma camada usando `crane` 0.22.1 e
+`umoci` 0.6.0 oficiais, ambos com checksum verificado. A origem é fixada por
+digest; o layout OCI é aplicado pelo umoci e empacotado com GNU tar, preservando
+conteúdo, hardlinks Nix, proprietários, ACLs e xattrs. O container empacotador
+também é fixado por digest, não tem rede, não recebe credenciais Supabase/GitHub nem privilégios
+adicionais e monta somente o cache de arquivos públicos e o binário de leitura.
+O preparador compara a configuração de execução inteira com a oficial,
+incluindo healthcheck, entrypoint e variáveis, antes de iniciar os serviços.
+
+Essa derivação tem um digest próprio e usa somente um alias no cache local do
+Docker, esperado pelo CLI. Ela não é apresentada como o mesmo artefato binário
+da imagem publicada. `postgres-image-provenance.json`, fora do Git, registra a
+origem e os identificadores derivados. Nenhuma imagem é publicada e nenhuma
+imagem existente é sobrescrita. Em `overlay2`, como nos runners do GitHub,
+essa conversão é dispensada. Não é necessário alterar o daemon do Docker.
+
 Conta: `nexo-test@example.invalid`. A senha aleatória e as chaves ficam somente
 em `private.json`, fora do checkout, com permissões restritas. Não copie esse
 arquivo, os arquivos de assinatura ou logs privados para o GitHub. Os scripts
 não usam credenciais administrativas de um projeto remoto.
 
-O segundo comando inicia o Edge Runtime local e utiliza o SDK real do Supabase
-e o HTML do PR. Os identificadores públicos são adaptados **em memória** para
+O segundo comando inicia a imagem oficial `supabase/edge-runtime:v1.69.28`,
+usando o modo suportado `--main-service` para executar diretamente a função
+fornecida. Porta 8081 e aliases seguem o gateway do CLI 2.67.3. Não há roteador
+MCP reconstruído nem dependência do template genérico que importa `deno.land`.
+Utiliza o SDK real do Supabase e o HTML do PR. Os identificadores públicos são adaptados **em memória** para
 o projeto local; os arquivos do aplicativo não são reconfigurados para testes.
 Um cliente OAuth temporário é criado e removido ao terminar. O callback HTTPS
 do cliente fictício é interceptado no navegador; nenhum código é enviado ao
@@ -56,10 +77,10 @@ cujo código fornecido não acessa dados financeiros. Não chama outras ferramen
 existentes. Não usa JWT inventado para demonstrar sucesso: o token válido vem
 da troca real do código OAuth no Auth local.
 
-O gateway local permite alcançar os metadados públicos da função
-(`verify_jwt = false` somente no diretório local). Isso **não** desabilita a
-verificação JWT da função: cada POST continua sujeito ao verificador original.
-O teste confirma essas rejeições. Nenhuma configuração remota é alterada.
+Os metadados públicos chegam diretamente à função pelo gateway local, e cada
+POST continua sujeito ao verificador JWT original do fonte recuperado. Não se
+utiliza opção para desativar verificação de JWT. O teste confirma essas rejeições.
+Nenhuma configuração remota é alterada.
 
 O CLI mantém o banco local em Docker. Para encerrá-lo, sem apagar volumes:
 
@@ -70,6 +91,30 @@ O CLI mantém o banco local em Docker. Para encerrá-lo, sem apagar volumes:
 Processos não sobrevivem necessariamente a uma nova tarefa; repita os comandos
 de preparação. Cada tarefa do Codex é isolada: use o checkout existente e não
 crie worktrees sem solicitação explícita.
+
+## Codex com rede restrita
+
+O preparador reutiliza a rota de proxy já fornecida ao cliente Docker, preserva
+as exclusões existentes e acrescenta somente os nomes dos serviços locais ao
+`NO_PROXY`. Copia o bundle público de confiança da sessão para a pasta de funções,
+montada pelo CLI em modo somente leitura, e configura `DENO_CERT`/`SSL_CERT_FILE`.
+Recusa um arquivo que contenha chave privada e nunca desativa a validação TLS.
+Não altera o proxy, o daemon nem a política de rede global. Valores do proxy
+ficam somente no arquivo privado externo ao checkout; não devem ser impressos.
+
+O template genérico do comando `supabase functions serve` depende de `deno.land`,
+bloqueado na política desta instância. O ensaio usa o modo main-service oficial
+e dispensa esse template; por isso a liberação inicialmente proposta foi retirada
+do rascunho. Nenhuma ampliação da política é necessária para os testes aqui.
+
+O Chromium usa a rota de proxy da sessão. Os módulos reais do SDK são recebidos
+pelo cliente HTTPS do Playwright, com verificação de certificados e a confiança
+fornecida ao Node, e encaminhados ao navegador. Isso evita alterar o banco de
+certificados do Chromium ou desativar TLS. Não são respostas simuladas do SDK.
+
+Em uma nova sessão, repita preparação e validação para atualizar proxy/CA e
+conferir a cópia da função e a integridade do arquivo privado antes de iniciar
+o Edge Runtime. Não edite esse arquivo à mão.
 
 ## Origem da função e dados fictícios
 
