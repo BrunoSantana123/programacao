@@ -58,6 +58,8 @@ jobs:
         run: python -m tools.setup_local_test --directory "$RUNNER_TEMP/nexo-test-environment"
       - name: Validate signup, OAuth, financial entries and user isolation
         run: python -m tools.validate_local_oauth --directory "$RUNNER_TEMP/nexo-test-environment"
+      - name: Validate real local password recovery (no external email)
+        run: python -m tools.validate_recovery_local --directory "$RUNNER_TEMP/nexo-test-environment"
       - name: Stop only this job's local Supabase
         if: always()
         shell: bash
