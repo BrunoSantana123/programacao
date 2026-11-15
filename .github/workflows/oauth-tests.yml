@@ -56,10 +56,12 @@ jobs:
           python -m playwright install --with-deps chromium
       - name: Prepare isolated Supabase, test account and fixtures
         run: python -m tools.setup_local_test --directory "$RUNNER_TEMP/nexo-test-environment"
-      - name: Validate signup, OAuth, financial entries and user isolation
+      - name: Validate OAuth, entries, balance, movements and user isolation
         run: python -m tools.validate_local_oauth --directory "$RUNNER_TEMP/nexo-test-environment"
       - name: Validate real local password recovery (no external email)
         run: python -m tools.validate_recovery_local --directory "$RUNNER_TEMP/nexo-test-environment"
+      - name: Preserve official signup confirmation and password recovery
+        run: python -m tools.validate_auth_local --directory "$RUNNER_TEMP/nexo-test-environment"
       - name: Stop only this job's local Supabase
         if: always()
         shell: bash
