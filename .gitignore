@@ -4,3 +4,4 @@ historico.json
 __pycache__/
 
 /dist-homolog/
+*.pyc
