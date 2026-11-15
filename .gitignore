@@ -1,3 +1,5 @@
 leads.json
 gastos.json
-historico.json  
+historico.json
+__pycache__/
+*.pyc
