@@ -1,1 +1,580 @@
 
+<!doctype html>
+<html lang="pt-BR">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>NEXO Organizador | Prévia</title>
+<style>
+*{box-sizing:border-box}
+:root{
+ color-scheme:dark;
+ --a:#00e5ed;
+ --muted:#9eb4c6;
+ --line:#192a34;
+ --panel:#0d171d
+}
+body{
+ margin:0;
+ background:radial-gradient(ellipse at 69% -15%,#004052 0,transparent 42%),#05090c;
+ color:#f4f7fa;
+ font:16px system-ui,sans-serif;
+ min-height:100vh
+}
+button{font:inherit;color:inherit;cursor:pointer}
+svg{
+ width:1.35em;height:1.35em;
+ flex:none;vertical-align:middle;
+ fill:none;stroke:currentColor;
+ stroke-width:1.8;stroke-linecap:round;
+ stroke-linejoin:round
+}
+.ico{color:var(--a);font-size:25px}
+.layout{
+ display:grid;
+ grid-template-columns:clamp(210px,18vw,300px) 1fr;
+ min-height:100vh
+}
+.side{
+ position:sticky;top:0;height:100vh;
+ display:flex;flex-direction:column;
+ padding:30px 18px 20px;
+ background:linear-gradient(150deg,#081016,#040709);
+ border-right:2px solid var(--a);
+ border-radius:0 32px 38px 0;
+ box-shadow:6px 0 28px #00deef42,inset -2px 0 14px #00d7e630;
+ overflow:hidden
+}
+.logo{
+ position:relative;text-align:center;
+ margin:0 auto 46px;width:100%;
+ max-width:220px;padding:8px 0 20px;
+ isolation:isolate
+}
+.logo:after{
+ content:'';position:absolute;inset:0 3% 8%;
+ border:4px solid transparent;
+ border-top-color:var(--a);
+ border-right-color:var(--a);
+ border-radius:50%;
+ transform:rotate(-13deg);z-index:-1
+}
+.logo b{
+ font-size:clamp(34px,3.5vw,60px);
+ font-weight:900;letter-spacing:-3px;
+ font-style:italic;line-height:1.1
+}
+.logo b span{color:var(--a)}
+.logo small{
+ display:block;font-size:11px;
+ letter-spacing:4px;font-style:italic
+}
+.side nav{display:grid;gap:8px}
+.side button{
+ display:flex;align-items:center;gap:15px;
+ text-align:left;background:none;
+ border:1px solid transparent;
+ padding:13px 18px;border-radius:18px;
+ font-size:18px;white-space:nowrap
+}
+.side button:hover,.side button.active{
+ background:linear-gradient(110deg,#007d88,#004650);
+ border-color:#00a8b4;
+ box-shadow:0 0 18px #00e5ed30
+}
+.side .profile{
+ margin-top:auto;border-top:1px solid var(--line)
+}
+main{
+ padding:27px 22px 15px 32px;
+ min-width:0;max-width:1700px;
+ width:100%;margin:auto
+}
+header{
+ display:flex;justify-content:space-between;
+ align-items:flex-start;gap:15px;
+ margin:0 0 27px
+}
+h1{
+ margin:0;font-size:clamp(28px,3vw,42px);
+ letter-spacing:-1px
+}
+header p{
+ margin:6px 0 0;color:var(--muted);
+ font-size:clamp(14px,1.5vw,22px)
+}
+.top{display:flex;gap:12px;align-items:center}
+.date,.bell{
+ background:#101b22;border:1px solid #2a3e4b;
+ padding:13px;border-radius:18px;
+ white-space:nowrap
+}
+.bell{position:relative}
+.bell:after{
+ content:'';width:9px;height:9px;
+ border-radius:50%;background:var(--a);
+ position:absolute;top:8px;right:6px
+}
+.cards{
+ display:grid;
+ grid-template-columns:1.15fr .95fr 1fr 1fr;
+ gap:17px;margin-bottom:20px
+}
+.card,.panel{
+ background:linear-gradient(140deg,#101b22,#0a1217);
+ border:1px solid var(--line);
+ border-radius:22px;padding:19px;
+ box-shadow:0 7px 22px #0004;min-width:0
+}
+.card{
+ display:flex;align-items:center;gap:13px;
+ flex-wrap:wrap;min-height:126px
+}
+.card .ico{font-size:34px}
+.metric{flex:1;min-width:0}
+.metric small{font-size:clamp(12px,1.2vw,17px)}
+.metric strong{
+ display:block;
+ font-size:clamp(18px,2vw,31px);
+ white-space:nowrap;margin-top:3px;
+ letter-spacing:-.6px
+}
+.card.glow{
+ border-color:var(--a);
+ background:radial-gradient(ellipse at bottom,#00657588,transparent 70%),#0b272d
+}
+.card.glow strong{color:var(--a)}
+.bar{
+ height:12px;overflow:hidden;background:#21343f;
+ border-radius:99px;flex:1
+}
+.bar i{
+ display:block;height:100%;
+ background:linear-gradient(90deg,#00cad9,#00f5fa);
+ border-radius:99px
+}
+.progress{
+ display:flex;align-items:center;gap:10px;
+ color:var(--muted);width:100%;font-size:13px
+}
+.middle{
+ display:grid;grid-template-columns:1.04fr 1fr .96fr;
+ gap:17px
+}
+.bottom{
+ display:grid;grid-template-columns:.83fr 1.17fr;
+ gap:17px;margin-top:18px
+}
+.panel h2{
+ margin:0;font-size:clamp(18px,1.8vw,25px);
+ letter-spacing:-.6px;display:flex;
+ align-items:center;gap:10px
+}
+.heading{
+ display:flex;align-items:center;
+ justify-content:space-between;gap:7px;
+ margin-bottom:15px
+}
+.plus,.outline{
+ border:1px solid var(--a);border-radius:10px;
+ background:transparent;color:var(--a);
+ padding:4px 9px
+}
+.outline{
+ display:block;width:100%;padding:10px;
+ margin-top:13px;color:white
+}
+.line{
+ display:flex;align-items:center;gap:9px;
+ padding:10px 0;border-bottom:1px solid #1b2a34;
+ color:#d9e3ec;font-size:clamp(13px,1.23vw,18px)
+}
+.line:last-child{border:0}
+.line input{
+ accent-color:var(--a);width:18px;height:18px;
+ flex:none
+}
+.line:has(input:checked) span{color:var(--muted)}
+.line .arrow{margin-left:auto;color:#7793a4}
+.dot{
+ width:9px;height:9px;flex:none;
+ border-radius:50%;background:var(--a)
+}
+.subgrid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.mini{
+ border-radius:15px;background:#132128;
+ padding:14px;min-width:0
+}
+.mini small{
+ display:block;color:var(--muted);
+ font-size:clamp(11px,1.15vw,16px)
+}
+.mini b{
+ display:block;margin-top:8px;
+ font-size:clamp(16px,1.65vw,24px);
+ white-space:nowrap
+}
+.up{color:#00df91}
+.down{color:#ff6644}
+.reserve{
+ display:grid;grid-template-columns:repeat(3,minmax(0,1fr));
+ gap:11px
+}
+.reserve .mini{padding:13px;border:1px solid #23323b}
+.reserve .mini .ico{font-size:27px}
+.reserve .mini small{margin:8px 0}
+.reserve .mini b{margin:8px 0 3px}
+.reserve .bar{height:8px}
+.muted{color:var(--muted);font-size:13px}
+footer{
+ color:#8ca5b6;font-size:12px;
+ margin-top:16px;text-align:right
+}
+.focused{display:block;max-width:800px}
+.focused>.panel{margin-bottom:20px}
+.hide{display:none!important}
+dialog{
+ background:#101b22;color:white;
+ border:1px solid var(--a);border-radius:18px;
+ max-width:min(90vw,420px);padding:24px
+}
+dialog::backdrop{background:#000a}
+#missions{max-height:151px;overflow:auto;scrollbar-width:thin}
+@media(max-width:1100px){
+ .cards{grid-template-columns:repeat(2,1fr)}
+ .middle{grid-template-columns:repeat(2,1fr)}
+ .middle .panel:last-child{grid-column:1/-1}
+ .bottom{grid-template-columns:1fr}
+ .card{min-height:100px}
+}
+@media(max-width:720px){
+ .layout{display:block}
+ .side{
+  position:relative;height:auto;
+  border-radius:0 0 18px 18px;
+  border-right:0;border-bottom:2px solid var(--a);
+  padding:13px
+ }
+ .logo{margin:0 0 8px;max-width:160px}
+ .side nav{display:flex;overflow:auto;gap:4px}
+ .side button{padding:10px;font-size:13px;gap:5px}
+ .side .profile{display:none}
+ main{padding:19px 13px}
+ header{flex-wrap:wrap}
+ .top{gap:6px}
+ .date,.bell{padding:8px}
+ .cards,.middle{gap:9px}
+ .middle{grid-template-columns:1fr}
+ .bottom{gap:10px}
+ .card,.panel{padding:13px;border-radius:17px}
+ .reserve{grid-template-columns:1fr}
+ .card .ico{font-size:24px}
+ .metric strong{font-size:19px}
+ .metric small{font-size:12px}
+ .line{font-size:15px}
+}
+</style>
+
+<div class="layout">
+
+<aside class="side">
+ <div class="logo">
+  <b>NE<span>XO</span></b>
+  <small>ORGANIZADOR</small>
+ </div>
+ <nav id="nav"></nav>
+ <button class="profile" data-go="Meu perfil">
+  <span data-icon="user"></span>Meu perfil
+ </button>
+</aside>
+
+<main>
+
+<header>
+ <div>
+  <h1 id="title">Olá, visitante! 👋</h1>
+  <p>Seu painel de rotina, metas e finanças.</p>
+ </div>
+ <div class="top">
+  <span class="date">
+   <span data-icon="calendar"></span>
+   <span id="date"></span>
+  </span>
+  <button class="bell" aria-label="Notificações" data-demo>
+   <span data-icon="bell"></span>
+  </button>
+ </div>
+</header>
+
+<div class="cards" id="cards">
+
+ <div class="card">
+  <span class="ico" data-icon="target"></span>
+  <div class="metric">
+   <small>Meta diária</small>
+   <strong>R$ 350,00</strong>
+  </div>
+  <div class="progress">
+   <div class="bar"><i style="width:46%"></i></div>
+   46%
+  </div>
+ </div>
+
+ <div class="card">
+  <span class="ico" data-icon="coins"></span>
+  <div class="metric">
+   <small>Ganhos do dia</small>
+   <strong>R$ 238,00</strong>
+  </div>
+ </div>
+
+ <div class="card">
+  <span class="ico" data-icon="wallet"></span>
+  <div class="metric">
+   <small>Despesas do dia</small>
+   <strong>R$ 76,50</strong>
+  </div>
+ </div>
+
+ <div class="card glow">
+  <span class="ico" data-icon="chart"></span>
+  <div class="metric">
+   <small>Saldo do dia</small>
+   <strong>R$ 161,50</strong>
+  </div>
+ </div>
+
+</div>
+
+<div class="middle" id="middle">
+
+ <section class="panel" data-panel="Metas">
+  <div class="heading">
+   <h2><span class="ico" data-icon="target"></span>Metas</h2>
+   <button class="plus" data-demo>+</button>
+  </div>
+  <div id="goals"></div>
+ </section>
+
+ <section class="panel" data-panel="Financeiro">
+  <div class="heading">
+   <h2><span class="ico" data-icon="coins"></span>Financeiro</h2>
+  </div>
+  <div class="subgrid">
+   <div class="mini">
+    <small><span class="up">↑</span> Receitas</small>
+    <b>R$ 238,00</b>
+   </div>
+   <div class="mini">
+    <small><span class="down">↓</span> Despesas</small>
+    <b>R$ 76,50</b>
+   </div>
+  </div>
+  <button class="outline" data-demo>Ver fechamento ›</button>
+ </section>
+
+ <section class="panel" data-panel="Agenda">
+  <div class="heading">
+   <h2><span class="ico" data-icon="calendar"></span>Agenda</h2>
+   <button class="plus" data-demo>+</button>
+  </div>
+  <div id="agenda"></div>
+ </section>
+
+</div>
+
+<div class="bottom" id="bottom">
+
+ <section class="panel" data-panel="Missões">
+  <div class="heading">
+   <h2><span class="ico" data-icon="check"></span>Missões</h2>
+   <span class="muted" id="count">2 de 5 concluídas</span>
+  </div>
+  <div class="progress">
+   <div class="bar">
+    <i id="missionbar" style="width:40%"></i>
+   </div>
+   <span id="pct">40%</span>
+  </div>
+  <div id="missions"></div>
+ </section>
+
+ <section class="panel" data-panel="Reservas">
+  <div class="heading">
+   <h2><span class="ico" data-icon="pig"></span>Reservas (Caixinhas)</h2>
+   <button class="plus" data-demo>+</button>
+  </div>
+  <div class="reserve" id="reserves"></div>
+ </section>
+
+</div>
+
+<section id="extra" class="panel hide">
+ <h2 id="extraTitle"></h2>
+ <p class="muted">
+  Tela de demonstração. A integração com o sistema oficial
+  será feita após a validação visual.
+ </p>
+</section>
+
+<footer>
+ PRÉVIA VISUAL · dados fictícios · sem conexão com o banco
+</footer>
+
+</main>
+</div>
+
+<dialog id="demo">
+ <h2>Prévia visual</h2>
+ <p>Esta ação ainda não grava dados. Estamos validando o design.</p>
+ <button class="outline" onclick="this.closest('dialog').close()">
+  Entendi
+ </button>
+</dialog>
+
+<script>
+const paths={
+ home:'M3 10 12 3l9 7v11h-6v-7H9v7H3z',
+ target:'M20 11a8 8 0 1 1-7-7 M15 11a4 4 0 1 1-4-3 M12 12l8-8 M16 4h4v4',
+ coins:'M3 5c0-4 18-4 18 0s-18 4-18 0v5c0 4 18 4 18 0V5 M3 10v5c0 4 18 4 18 0v-5 M3 15v5c0 4 18 4 18 0v-5',
+ wallet:'M3 4h18v16H3z M3 8h18 M6 15h6',
+ calendar:'M3 5h18v16H3z M7 3v4 M17 3v4 M3 10h18 M7 14h2 M13 14h2 M7 18h2',
+ check:'M20 13v8H3V4h12 M7 12l4 4L22 5',
+ pig:'M5 9c3-5 12-5 15 1l2 1v5h-3l-2 4h-3v-3H9v3H6l-2-5C0 15 1 10 4 11 M14 7h-4 M17 11h.1 M8 5V2h5',
+ chart:'M3 20h18 M5 16v-5 M11 16V8 M17 16V4 M4 8l6-5 4 2 6-4',
+ gear:'M12 2l2 3 4-1 3 4-2 3 3 3-2 4-4-1-2 5h-4l-2-4-4 1-2-4 3-3-2-4 3-3 4 1z M12 9a3 3 0 1 0 0 6 3 3 0 1 0 0-6',
+ user:'M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8 M4 21v-2a8 8 0 0 1 16 0v2z',
+ bell:'M5 17h14l-2-4V8a5 5 0 0 0-10 0v5z M10 21h4',
+ car:'M3 11l2-6h14l2 6v8h-3v-3H6v3H3z M3 11h18 M6 13h2 M16 13h2',
+ plane:'M22 2l-7 20-3-9-9-3z M12 13L22 2',
+ house:'M2 11l10-9 10 9 M5 9v12h14V9 M10 21v-7h4v7'
+};
+
+const icon=k=>`
+ <svg viewBox="0 0 24 24" aria-hidden="true">
+  <path d="${paths[k]}"/>
+ </svg>`;
+
+const menu=[
+ ['Início','home'],
+ ['Metas','target'],
+ ['Financeiro','coins'],
+ ['Agenda','calendar'],
+ ['Missões','check'],
+ ['Reservas','pig'],
+ ['Relatórios','chart'],
+ ['Ajustes','gear']
+];
+
+const $=id=>document.getElementById(id);
+
+$('nav').innerHTML=menu.map(([n,k])=>`
+ <button data-go="${n}">${icon(k)}${n}</button>
+`).join('');
+
+const tasks=arr=>arr.map(([n,c])=>`
+ <label class="line">
+  <input type="checkbox" ${c?'checked':''}>
+  <span>${n}</span>
+ </label>
+`).join('');
+
+$('goals').innerHTML=tasks([
+ ['Meta diária',false],
+ ['Objetivo pessoal',false],
+ ['Organizar finanças',false],
+ ['Planejar a semana',false]
+]);
+
+$('missions').innerHTML=tasks([
+ ['Organizar a rotina',true],
+ ['Conferir despesas',true],
+ ['Revisar pendências',false],
+ ['Planejar a semana',false],
+ ['Conferir metas',false]
+]);
+
+$('agenda').innerHTML=[
+ '08:00 – Plantão',
+ '14:00 – Reunião',
+ '19:00 – Academia'
+].map(x=>`
+ <div class="line"><i class="dot"></i>${x}</div>
+`).join('');
+
+$('reserves').innerHTML=[
+ ['Manutenção','car','480','1.200'],
+ ['Viagem','plane','1.200','3.000'],
+ ['Emergência','house','2.000','5.000']
+].map(([n,k,v,t])=>`
+ <div class="mini">
+  <span class="ico">${icon(k)}</span>
+  <small>${n}</small>
+  <b>R$ ${v},00</b>
+  <small>de R$ ${t},00</small>
+  <div class="progress">
+   <div class="bar"><i style="width:40%"></i></div>
+   40%
+  </div>
+ </div>
+`).join('');
+
+document.querySelectorAll('[data-icon]').forEach(e=>{
+ e.innerHTML=icon(e.dataset.icon);
+});
+
+$('date').textContent=new Date().toLocaleDateString('pt-BR',{
+ weekday:'short',
+ day:'numeric',
+ month:'short',
+ year:'numeric',
+ timeZone:'America/Sao_Paulo'
+});
+
+function go(n){
+ const home=n==='Início';
+
+ $('title').textContent=home?'Olá, visitante! 👋':n;
+
+ document.querySelectorAll('[data-go]').forEach(b=>{
+  b.classList.toggle('active',b.dataset.go===n);
+ });
+
+ $('cards').classList.toggle('hide',!home);
+
+ let found=false;
+
+ document.querySelectorAll('[data-panel]').forEach(p=>{
+  const show=home||p.dataset.panel===n;
+  p.classList.toggle('hide',!show);
+  found=found||show;
+ });
+
+ for(const id of ['middle','bottom']){
+  const e=$(id);
+  e.classList.toggle('focused',!home);
+  e.classList.toggle('hide',!e.querySelector('.panel:not(.hide)'));
+ }
+
+ $('extra').classList.toggle('hide',found);
+ $('extraTitle').textContent=n;
+}
+
+document.querySelectorAll('[data-go]').forEach(b=>{
+ b.onclick=()=>go(b.dataset.go);
+});
+
+document.querySelectorAll('[data-demo]').forEach(b=>{
+ b.onclick=()=>$('demo').showModal();
+});
+
+$('missions').onchange=()=>{
+ const n=$('missions').querySelectorAll('input:checked').length;
+
+ $('count').textContent=n+' de 5 concluídas';
+ $('pct').textContent=n*20+'%';
+ $('missionbar').style.width=n*20+'%';
+};
+
+go('Início');
+</script>
+</html>
