@@ -1,0 +1,10 @@
+import test from "node:test";
+import assert from "node:assert/strict";
+import { deleteOwnAccount } from "../supabase/functions/nexo-delete-account/account.mjs";
+const base={authorization:"Bearer example",body:{password:"example-password",confirmation:"EXCLUIR"}};
+const mock=(opts={})=>{const removed=[];return {removed,current:async()=>opts.invalid?null:{id:"user-a",email:"a@example.test"},reauthenticate:async()=>opts.wrong?null:{user:{id:opts.other?"user-b":"user-a"}},remove:async id=>{removed.push(id);return !opts.failed}}};
+test("deletes only authenticated account after matching password",async()=>{const a=mock();assert.equal((await deleteOwnAccount(base,a)).status,200);assert.deepEqual(a.removed,["user-a"])});
+test("missing authorization and invalid session never delete",async()=>{const a=mock({invalid:true});assert.equal((await deleteOwnAccount({...base,authorization:null},a)).status,401);assert.equal((await deleteOwnAccount(base,a)).status,401);assert.deepEqual(a.removed,[])});
+test("wrong password and different reauth identity never delete",async()=>{for(const opts of [{wrong:true},{other:true}]){const a=mock(opts);assert.equal((await deleteOwnAccount(base,a)).status,403);assert.deepEqual(a.removed,[])}});
+test("rejects supplied victim ID and absent explicit confirmation",async()=>{const a=mock();assert.equal((await deleteOwnAccount({...base,body:{...base.body,user_id:"user-b"}},a)).status,400);assert.equal((await deleteOwnAccount({...base,body:{...base.body,confirmation:""}},a)).status,400);assert.deepEqual(a.removed,[])});
+test("server failure never reports success",async()=>{const a=mock({failed:true});const r=await deleteOwnAccount(base,a);assert.equal(r.status,502);assert.equal(r.body.deleted,undefined)});
