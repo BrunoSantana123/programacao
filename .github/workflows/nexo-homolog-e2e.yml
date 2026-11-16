@@ -1,0 +1,37 @@
+name: NEXO homolog - exclusao real
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+permissions:
+  contents: read
+jobs:
+  homolog-e2e:
+    if: github.event.pull_request.head.repo.full_name == github.repository && github.head_ref == 'feat/nexo-delete-account'
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    env:
+      NEXO_HOMOLOG_ANON_KEY: ${{ secrets.NEXO_HOMOLOG_ANON_KEY }}
+      NEXO_HOMOLOG_SERVICE_ROLE_KEY: ${{ secrets.NEXO_HOMOLOG_SERVICE_ROLE_KEY }}
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - name: Validate homologation credentials without printing them
+        shell: bash
+        run: |
+          node --input-type=module <<'JS'
+          const ref = 'ywabgfguujgvqtrskswf';
+          for (const [name, role] of [['NEXO_HOMOLOG_ANON_KEY','anon'], ['NEXO_HOMOLOG_SERVICE_ROLE_KEY','service_role']]) {
+            const value = process.env[name];
+            if (!value) { console.error('BLOCKED: secret not configured: '+name); process.exit(1); }
+            try {
+              const p = JSON.parse(Buffer.from(value.split('.')[1], 'base64url').toString());
+              if (p.ref !== ref || p.role !== role) throw Error();
+            } catch { console.error('BLOCKED: unexpected project or key role: '+name); process.exit(1); }
+          }
+          console.log('PASS: both legacy keys target homologation only');
+          JS
+      - name: Verify syntax
+        run: node --check tools/nexo-teste-exclusao.mjs
+      - name: Run disposable-account test
+        run: node tools/nexo-teste-exclusao.mjs
